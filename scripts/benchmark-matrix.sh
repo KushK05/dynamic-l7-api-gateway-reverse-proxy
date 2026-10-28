@@ -60,6 +60,20 @@ if [[ -z "${JWT_BENCH_TOKEN:-}" ]]; then
   exit 2
 fi
 
+# Check both sides of token delivery before creating benchmark artifacts. This
+# avoids reporting a misleading revision failure when an expired token, wrong
+# key, or sudo environment boundary turns every protected request into a 401.
+token_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+  -H "Authorization: Bearer $JWT_BENCH_TOKEN" http://127.0.0.1:8080/api/secure/benchmark-preflight)
+if [[ "$token_status" != 200 ]]; then
+  echo "JWT preflight returned HTTP $token_status. Generate a fresh token from the workstation key and verify it before rerunning." >&2
+  exit 1
+fi
+if ! gateway_docker compose --profile tools run --rm --no-deps --entrypoint /bin/sh bench -c 'test -n "${JWT_BENCH_TOKEN:-}"'; then
+  echo "JWT preflight could not pass the token into the bench container." >&2
+  exit 1
+fi
+
 reload_pid=""
 cleanup(){
   if [[ -n "$reload_pid" ]]; then kill "$reload_pid" 2>/dev/null || true; wait "$reload_pid" 2>/dev/null || true; fi

@@ -102,7 +102,7 @@ func main() {
 					} else {
 						s.status = resp.StatusCode
 						s.upstream = resp.Header.Get("X-Upstream-ID")
-						if *verifyRevision {
+						if *verifyRevision && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 							// Gateway and upstream echo the revision independently; compare them
 							// to catch responses assembled across different config snapshots.
 							body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -114,7 +114,10 @@ func main() {
 							_, _ = io.Copy(io.Discard, resp.Body)
 						}
 						resp.Body.Close()
-						if resp.StatusCode >= 500 {
+						// A benchmarked healthy route must return a successful response. Treat
+						// authentication and routing failures as errors instead of hiding them
+						// behind latency or revision statistics.
+						if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 							s.err = true
 						}
 					}
