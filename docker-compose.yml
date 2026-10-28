@@ -43,6 +43,8 @@ services:
     build: .
     entrypoint: ["/usr/local/bin/bench"]
     profiles: ["tools"]
+    environment:
+      JWT_BENCH_TOKEN: ${JWT_BENCH_TOKEN:-}
     volumes:
       - ./evidence:/evidence
     depends_on: [gateway]

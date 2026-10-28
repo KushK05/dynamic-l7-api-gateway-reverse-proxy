@@ -47,7 +47,7 @@ func main() {
 	rps := flag.Int("rps", 100, "constant request rate")
 	warm := flag.Int("warmup", 15, "warm-up seconds")
 	duration := flag.Int("duration", 60, "measured seconds")
-	token := flag.String("token", "", "optional Bearer token")
+	token := flag.String("token", os.Getenv("JWT_BENCH_TOKEN"), "optional Bearer token")
 	verifyRevision := flag.Bool("verify-revision", false, "verify gateway and upstream config revisions match")
 	out := flag.String("out", "", "write JSON report path")
 	flag.Parse()

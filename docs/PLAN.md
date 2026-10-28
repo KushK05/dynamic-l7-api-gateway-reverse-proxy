@@ -4,7 +4,7 @@
 
 Build a high-performance Go Layer 7 gateway that validates route changes before publishing them, changes the active immutable config snapshot without restarting, and lets every request complete against one revision. The gateway verifies RS256 JWTs using public keys from AWS Secrets Manager, observes upstream health, ejects failed targets, and exposes a live review dashboard and reproducible fault/benchmark tools.
 
-The low-cost functional review deployment is one x86_64 EC2 `t3.micro` instance with 2 GiB of disk-backed swap, running Docker Compose. Four separate containers provide the gateway, upstream-v1, upstream-v2, and optional benchmark/fault tools. It demonstrates single-process atomic routing and upstream-process fault handling. It does not demonstrate multi-host scaling, consensus, or distributed linearizability. Performance acceptance targets below remain scoped to `c7g.large`; the `t3.micro` profile is for functional review only.
+The current low-cost functional review deployment is one x86_64 EC2 `t3.micro` instance with 2 GiB of disk-backed swap, running Docker Compose. Four separate containers provide the gateway, upstream-v1, upstream-v2, and optional benchmark/fault tools. It demonstrates single-process atomic routing and upstream-process fault handling. Because the student account cannot create an EC2 IAM role, the deployed demo supplies only public JWT verification material through `JWT_KEYS_JSON`; Secrets Manager refresh is an optional path requiring an authorized role. It does not demonstrate multi-host scaling, consensus, or distributed linearizability. Performance acceptance targets below remain scoped to `c7g.large`; the `t3.micro` profile is for functional review only.
 
 ## Architecture and interfaces
 
@@ -16,7 +16,8 @@ Client ----------------> Gateway -----------------> upstream-v1 :9101
                            |  +-- public metrics and health
                            +----- admin :9090, host loopback only
                                   ^ SSH local port forward
-                           IAM role -> Secrets Manager public RS256 keys
+                           optional IAM role -> Secrets Manager keys
+                           current demo -> JWT_KEYS_JSON public keys
                            benchmark/faultctl -> internal network only
 ```
 
@@ -52,7 +53,7 @@ Admin plane has no application authentication in this one-instance academic setu
 3. **JWT and upstream resilience** - integrate Secrets Manager via AWS CLI and the EC2 instance role; cache verification keys in memory, refresh every five minutes, retain last-known-good keys, and support forced refresh. Verify JWT claims and algorithm. Add active health probes, ejection/recovery, timeout, and safe transport retry.
 4. **Metrics and review dashboard** - expose Prometheus counters and status data; sample a bounded rolling latency set for p50/p95/p99; render the status dashboard without a frontend build/dependency.
 5. **Fault and end-to-end checks** - script bad/missing JWTs, active traffic during config reloads, stale revisions, invalid configurations, upstream delays/errors/down state/recovery, and report generation under `evidence/`.
-6. **Benchmarks and EC2 delivery** - deploy the low-cost functional review on one x86_64 `t3.micro` EC2 host through CloudFormation. The separate performance profile uses `c7g.large`; collect exact instance/container configuration, and benchmark direct upstream, proxy without JWT, proxy with JWT, and proxy during config reloads at 100/500/1000 RPS. Each run has 15 seconds warm-up, 60 seconds measurement, and three repetitions. Save JSON request/latency results, container CPU/memory snapshots, and a Markdown summary. Document rotation, preflight, and teardown.
+6. **Benchmarks and EC2 delivery** - deploy the low-cost functional review on one x86_64 `t3.micro` EC2 host using the student's existing Ubuntu instance and Docker Compose. The default demo benchmark profile runs direct upstream, proxy without JWT, proxy with JWT, and proxy during config reloads at 5/10/20 RPS, with 2 seconds warm-up, 10 seconds measured, and one repetition. Keep the 100/500/1000 RPS, 15/60-second, three-repetition schedule as a separate `c7g.large` performance profile. Save JSON request/latency results, container CPU/memory snapshots, and a Markdown summary. Document local-key refresh and optional IAM-backed secret rotation.
 
 ## Test and acceptance plan
 
@@ -66,22 +67,22 @@ Admin plane has no application authentication in this one-instance academic setu
 
 ## Project review demonstration (10 to 12 minutes)
 
-1. Show the EC2 instance, the one-secret IAM policy, security-group ports, running containers, and secret metadata without displaying secret contents.
+1. Show the Ubuntu EC2 instance, security-group ports, running containers, and that the gateway has public verification keys but no signing private key. Do not expose environment file contents.
 2. Open the dashboard through the SSH tunnel and send baseline traffic. Point out request IDs, upstream identity, status totals, latency, and config revision.
 3. Keep traffic running while switching catalog from 100% v1 to an 80/20 canary. Show the revision advance and actual target split.
 4. Submit an invalid config, then a stale `If-Match`. Show both rejected while the valid route remains active.
-5. Send requests without a token, with malformed/forged/expired/wrong-audience/unknown-key/disallowed-algorithm tokens, then a valid RS256 token. Show 401/200 and rejection counters.
+5. Send requests without a token, with malformed/forged tokens, then a valid RS256 token. Show 401/200 and rejection counters. If demonstrating claim-specific attacks, generate those tokens on the workstation and send them to the EC2 public data-plane URL; never copy the signing key to EC2.
 6. Add latency and 503 failures to v2, then stop its container. Show probe failure, target ejection, safe GET failover, and continued service from v1. Restart v2 and wait for health recovery.
-7. Present the repeated benchmark summary and run a short live sample at 100 RPS. Explain that measurements use one EC2 host.
+7. Present the small-host benchmark summary and run the default 5/10/20 RPS matrix. Explain that measurements use one shared `t3.micro` host and are functional demo results, not performance acceptance data.
 8. State the guarantee: each request uses one immutable route revision; a rejected update does not disrupt current traffic; key rotation does not restart the gateway.
-9. Run fault reset, preserve the local evidence bundle, and delete the temporary CloudFormation stack and secret after review.
+9. Run fault reset, copy the evidence bundle off the EC2 instance, then stop or terminate the instance after the review.
 
 ## Deployment, review evidence, and cleanup
 
-- Follow `README.md` for key generation, secret creation, CloudFormation deployment, SSH tunnel, fault scripts, and teardown.
-- `scripts/review-smoke.sh` checks local or tunneled health, metrics, dashboard, admin status, and proxy response. `scripts/e2e-tests.sh` exercises JWT attacks, 100 valid plus 100 invalid and 100 stale updates under load, and target failure/recovery. `scripts/benchmark-matrix.sh` writes raw reports and resource snapshots; `scripts/summarize-benchmarks.py` writes the Markdown comparison.
-- Keep local evidence under ignored `evidence/`: raw benchmark reports, resource snapshots, E2E report, dashboard screenshots, effective IAM policy, CloudFormation stack parameters with secret ARN redacted as needed, and exact source commit hash. Never store JWT values, private signing keys, or secret contents in evidence.
-- The review host and stack are temporary. Remove Docker containers/volumes if no longer needed, delete the CloudFormation stack, and schedule the verification secret for deletion after preserving permitted evidence.
+- Follow `README.md` for current Ubuntu EC2 startup, SSH dashboard tunnel, local JWT verification key setup, fault scripts, benchmark profiles, and teardown. Secrets Manager refresh requires an authorized instance role; it is not part of the current student-account deployment.
+- `scripts/review-smoke.sh` checks health, metrics, dashboard, admin status, and proxy response. `scripts/e2e-tests.sh` defaults to a small-host schedule and accepts `E2E_PROFILE=full` only on a dedicated larger host. `scripts/benchmark-matrix.sh` defaults to the t3 demo profile and writes raw reports and resource snapshots; set `BENCH_PROFILE=performance` only on the larger benchmark host. `scripts/summarize-benchmarks.py` writes the Markdown comparison.
+- Keep evidence under ignored `evidence/`: raw benchmark reports, resource snapshots, E2E report, dashboard screenshots, and exact source commit hash. Never store JWT values, private signing keys, or verification-key environment contents in evidence.
+- The review host is temporary. Remove Docker containers/volumes if no longer needed and stop or terminate EC2 after preserving permitted evidence. An IAM role and Secrets Manager secret are not required for the current demo.
 
 ## Implemented project boundaries
 

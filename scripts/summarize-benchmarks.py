@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 rows = []
-for name in sorted(glob.glob("evidence/*.json")):
+for name in sorted(glob.glob("evidence/*-run*.json")):
     try:
         data = json.loads(Path(name).read_text())
     except (OSError, json.JSONDecodeError):

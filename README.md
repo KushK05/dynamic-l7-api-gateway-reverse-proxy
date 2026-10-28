@@ -80,71 +80,60 @@ Useful endpoints:
 
 The admin plane has no application-level authentication in this academic single-host setup. Compose binds it to host loopback, and the EC2 security group does not expose port 9090. Keep SSH restricted to the operator's `/32`; use the CloudFormation output to open an SSH tunnel.
 
-## AWS deployment
+## Current EC2 student-account deployment
 
-Prerequisites: an AWS account and region with `t3.micro` quota, a public HTTPS Git repository for this project, an EC2 key pair, and an operator IP CIDR. These steps create billable resources. Use a disposable review stack and tear it down after the demonstration.
+The review setup uses the already-created Ubuntu `t3.micro`; it does not require CloudFormation or permission to create IAM roles. Keep the gateway public key set on the EC2 host in a root-readable `.env` file, and keep the JWT signing private key on your workstation. The gateway can verify tokens from `JWT_KEYS_JSON` without AWS access. In this mode, `POST /admin/v1/secrets/refresh` is unavailable because there is no instance role; update the public key set and recreate the gateway container to rotate keys.
 
-1. Generate an RSA signing key and verification secret on a trusted workstation using the command above. Upload only the public key JSON to Secrets Manager:
+On EC2, from the repository directory, refresh and start the stack:
 
-   ```sh
-   aws secretsmanager create-secret \
-     --name dynamic-l7/jwt-verification \
-     --secret-string file://"$HOME/.config/dynamic-l7/jwt-keys.secret.json"
-   ```
+```sh
+git pull --ff-only
+printf 'JWT_KEYS_JSON=%s\nAWS_REGION=us-east-1\n' "$(python3 -c 'import json; print(json.dumps(json.load(open("/home/ubuntu/jwt-keys.secret.json")), separators=(",", ":")))')" | sudo tee .env >/dev/null
+sudo chown ubuntu:ubuntu .env
+chmod 600 .env
+sudo docker compose up --build -d
+sudo docker compose ps
+curl -fsS http://127.0.0.1:8080/healthz
+```
 
-2. Deploy the stack, providing the complete secret ARN, repository URL, key pair, and your SSH `/32`:
+Open the dashboard from your workstation with an SSH tunnel, then browse to `http://localhost:9090/dashboard`:
 
-   ```sh
-   aws cloudformation deploy \
-     --template-file deployment/cloudformation.yaml \
-     --stack-name dynamic-l7-review \
-     --capabilities CAPABILITY_IAM \
-     --parameter-overrides \
-       RepositoryURL=https://github.com/OWNER/REPOSITORY.git \
-       JWTSecretArn=arn:aws:secretsmanager:REGION:ACCOUNT:secret:dynamic-l7/jwt-verification-SUFFIX \
-       SSHAllowedCIDR=YOUR.PUBLIC.IP/32 \
-       KeyPairName=YOUR_EC2_KEY_PAIR
-   ```
+```sh
+ssh -i /path/to/your-key.pem -L 9090:127.0.0.1:9090 ubuntu@YOUR_EC2_IP
+```
 
-3. Read stack outputs. Visit the public gateway URL. Open the admin dashboard using the `SSHTunnel` output, then browse to `http://localhost:9090/dashboard`.
-4. Generate short-lived review tokens on the workstation. Do not copy the signing private key to EC2, Secrets Manager, the container, or the repository.
-5. For rotation, add the next public key under a new `kid` while retaining the old key during transition. Update the secret, call `POST /admin/v1/secrets/refresh` through the tunnel, confirm `secret_revision`, then remove the old key after existing tokens have expired.
-
-The instance role grants only `secretsmanager:GetSecretValue` on the configured secret ARN. EC2 requires IMDSv2; the token hop limit is 2 so the gateway container can retrieve the instance role credentials. No static AWS access key is required. The stack opens TCP 8080 publicly and SSH only from the supplied CIDR. Admin port 9090 is not exposed in the security group.
+The security group should allow port `8080` only as needed for review traffic, SSH only from your current public IP `/32`, and no inbound `9090` rule. Do not copy the private signing key to EC2. If an administrator later provides an EC2 role with access to the exact verification secret, the Secrets Manager refresh path can be enabled separately.
 
 ## Fault injection, tests, and benchmarks
 
-The fault controls are reachable only over the private Compose network. Use the supplied driver:
+Run these commands from the EC2 repository checkout over SSH. The scripts use Docker directly when available and `sudo docker` on the Ubuntu host. Fault controls remain inside the private Compose network. The fault demo briefly runs low-rate traffic, applies an 80/20 canary, demonstrates latency/ejection and full v2 process loss, then restores the original routes and upstream state:
 
 ```sh
 scripts/fault-demo.sh
-docker compose stop upstream-v2
-docker compose start upstream-v2
 ```
 
-The review smoke checks and E2E reload/JWT/fault run produce local files under the ignored `evidence/` directory:
+The smoke and E2E scripts write evidence into the ignored `evidence/` directory on EC2. Generate a short-lived valid JWT on your workstation, then paste it into the hidden prompt in the EC2 terminal when asked. The E2E run checks missing, forged, and valid tokens; claim-specific attacks are also checked when the private key is available locally. It never requires copying the private key to EC2.
 
 ```sh
 scripts/review-smoke.sh
-JWT_VALID_TOKEN="$(go run ./cmd/jwtgen token -private "$HOME/.config/dynamic-l7/review-signing-private.pem")" scripts/e2e-tests.sh
+scripts/e2e-tests.sh
 ```
 
-The full benchmark matrix takes about 45 minutes at the default schedule (four scenarios, three rates, three repetitions, 15-second warm-up plus 60-second measurement) and is intended for the larger `c7g.large` performance profile. Do not run it on the low-cost `t3.micro` demo host. Run from a benchmark host after exporting a short-lived `JWT_BENCH_TOKEN`:
+The benchmark matrix defaults to a small-host demo profile (5, 10, and 20 RPS; 2-second warm-up; 10-second measurement; one repetition). It compares direct upstream, proxy without JWT, proxy with JWT, and proxy during reloads. Paste a short-lived valid token when prompted. These figures show behavior on the shared demo host and are not `c7g.large` performance acceptance results.
 
 ```sh
-JWT_BENCH_TOKEN="$(go run ./cmd/jwtgen token -private "$HOME/.config/dynamic-l7/review-signing-private.pem")" scripts/benchmark-matrix.sh
+scripts/benchmark-matrix.sh
 python3 scripts/summarize-benchmarks.py
 ```
 
-The matrix records raw request counts, errors, achieved rate, p50/p95/p99 latency, active container list, and container CPU/memory snapshots. Benchmarks on one EC2 instance include shared-host and network-stack effects. For credible comparisons, keep the instance type, region, container limits, and test inputs fixed; preserve raw results if a target is missed.
+The original high-load profile remains available only for a dedicated benchmark machine: `BENCH_PROFILE=performance scripts/benchmark-matrix.sh`. It runs 100/500/1000 RPS with 15-second warm-up, 60-second measurements, and three repetitions. Do not run that schedule on the `t3.micro`. Reports include counts, errors, achieved rate, p50/p95/p99, container list, and CPU/memory snapshots. Copy the evidence directory to your workstation before terminating EC2 if you need to retain it.
 
 ## Teardown
 
-Stop and remove the stack and delete its secret after preserving required review evidence:
+After copying any evidence you want to keep, remove containers and the persisted gateway config from EC2:
 
 ```sh
-aws cloudformation delete-stack --stack-name dynamic-l7-review
-aws secretsmanager delete-secret --secret-id dynamic-l7/jwt-verification --recovery-window-in-days 7
+sudo docker compose down --volumes
 ```
 
-The secret deletion command uses a seven-day recovery window. If the review policy requires immediate permanent deletion, follow the institution's approved secret handling process.
+Then stop or terminate the instance from the EC2 console. The current student-account setup has no CloudFormation stack or attached Secrets Manager role to delete. Keep the signing private key only on your workstation.
