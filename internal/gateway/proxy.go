@@ -105,6 +105,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Header.Set("X-Forwarded-Host", r.Host)
 		req.Header.Set("X-Forwarded-Proto", scheme(r))
+		req.Header.Set("X-Request-ID", id)
 		req.Header.Set("X-Gateway-Route", route.ID)
 		req.Header.Set("X-Gateway-Upstream", up.ID)
 		req.Header.Set("X-Gateway-Config-Revision", strconv.FormatInt(snap.Revision, 10))
@@ -112,6 +113,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Flush streaming responses immediately rather than buffering them in the proxy.
 	proxy.FlushInterval = -1
 	proxy.Transport = &retryTransport{base: p.transport, route: *route, first: up, proxy: p, seed: id}
+	// Keep the gateway-generated ID authoritative. Upstreams receive it on the
+	// request, but their response copy is discarded to avoid duplicate headers.
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del("X-Request-ID")
+		return nil
+	}
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
 		p.logger.Warn("upstream request failed", "route", route.ID, "error", err)
 		http.Error(rw, "upstream unavailable", http.StatusBadGateway)
