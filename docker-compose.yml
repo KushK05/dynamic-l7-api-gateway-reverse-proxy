@@ -1,0 +1,50 @@
+services:
+  # Public data plane and loopback-only admin plane share the same gateway process.
+  gateway:
+    build: .
+    command: ["-config", "/etc/gateway/config.json", "-state", "/data/config.json", "-data-addr", ":8080", "-admin-addr", ":9090"]
+    environment:
+      JWT_SECRET_ARN: ${JWT_SECRET_ARN:-}
+      JWT_KEYS_JSON: ${JWT_KEYS_JSON:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    ports:
+      # Host port overrides make local development possible beside other services.
+      - "${GATEWAY_PORT:-8080}:8080"
+      - "127.0.0.1:${ADMIN_PORT:-9090}:9090"
+    volumes:
+      - ./config/config.json:/etc/gateway/config.json:ro
+      - gateway-data:/data
+    restart: unless-stopped
+    healthcheck:
+      # Container health is checked internally, independent of host port mappings.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      - upstream-v1
+      - upstream-v2
+  # Separate target processes let fault tests stop either backend independently.
+  upstream-v1:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: v1, PORT: "9101"}
+    expose: ["9101"]
+    restart: unless-stopped
+  upstream-v2:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: v2, PORT: "9102"}
+    expose: ["9102"]
+    restart: unless-stopped
+  # Opt-in tools share the private Compose network and are not kept running by default.
+  bench:
+    build: .
+    entrypoint: ["/usr/local/bin/bench"]
+    profiles: ["tools"]
+    volumes:
+      - ./evidence:/evidence
+    depends_on: [gateway]
+volumes:
+  gateway-data:

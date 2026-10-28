@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "routes": [{
+    "id": "catalog",
+    "priority": 100,
+    "match": {"methods": ["GET", "HEAD"], "path_prefix": "/api/catalog"},
+    "rewrite_prefix": "/api/catalog",
+    "timeout_ms": 1500,
+    "retry_attempts": 1,
+    "upstreams": [
+      {"id": "v1", "url": "http://upstream-v1:9101", "weight": 80},
+      {"id": "v2", "url": "http://upstream-v2:9102", "weight": 20}
+    ]
+  }]
+}

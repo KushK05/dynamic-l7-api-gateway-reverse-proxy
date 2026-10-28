@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Single-instance Dynamic L7 API Gateway review environment
+# Inputs are explicit so the deployment cannot guess a secret, SSH source, or key pair.
+Parameters:
+  LatestAL2023Arm64Ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+  RepositoryURL:
+    Type: String
+    Description: HTTPS URL of the public Git repository containing this project
+  JWTSecretArn:
+    Type: String
+    Description: Full ARN of the Secrets Manager secret holding RS256 public keys and JWT claims metadata
+  SSHAllowedCIDR:
+    Type: String
+    Description: Replace with the review operator's public IP /32; port 22 is the only SSH ingress
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+  InstanceType:
+    Type: String
+    Default: c7g.large
+    AllowedValues: [c7g.large]
+Resources:
+  # The instance can read exactly the one public-key secret configured for this review.
+  GatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: ec2.amazonaws.com}, Action: sts:AssumeRole}]
+      Policies:
+        - PolicyName: ReadOnlyNamedJWTVerificationSecret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Ref JWTSecretArn
+  GatewayProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: {Roles: [!Ref GatewayRole]}
+  # The public API is reachable on 8080; SSH remains limited to the supplied operator CIDR.
+  GatewaySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public gateway HTTP and operator-only SSH
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 8080, ToPort: 8080, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref SSHAllowedCIDR}
+      SecurityGroupEgress: [{IpProtocol: -1, CidrIp: 0.0.0.0/0}]
+  # IMDSv2 is mandatory; hop limit 2 permits the gateway container to use instance-role credentials.
+  GatewayInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAL2023Arm64Ami
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref GatewayProfile
+      SecurityGroupIds: [!GetAtt GatewaySecurityGroup.GroupId]
+      MetadataOptions: {HttpTokens: required, HttpEndpoint: enabled, HttpPutResponseHopLimit: 2}
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: {VolumeSize: 20, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true}
+      UserData:
+        # Bootstrap Docker, fetch the Compose plugin, and launch the checked-out review app.
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf update -y
+          dnf install -y docker git curl
+          systemctl enable --now docker
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          mkdir -p /opt/dynamic-l7
+          git clone '${RepositoryURL}' /opt/dynamic-l7/app
+          cd /opt/dynamic-l7/app
+          printf 'AWS_REGION=%s\nJWT_SECRET_ARN=%s\n' '${AWS::Region}' '${JWTSecretArn}' > .env
+          docker compose up -d --build
+      Tags: [{Key: Name, Value: dynamic-l7-gateway-review}]
+Outputs:
+  GatewayURL: {Description: Public data-plane URL, Value: !Sub 'http://${GatewayInstance.PublicDnsName}:8080'}
+  # Tunnel the private admin endpoint through SSH; it has no security-group ingress rule.
+  SSHTunnel: {Description: Open the admin dashboard locally through this SSH tunnel, Value: !Sub 'ssh -i <key.pem> -L 9090:127.0.0.1:9090 ec2-user@${GatewayInstance.PublicDnsName}'}
+  InstanceID: {Value: !Ref GatewayInstance}

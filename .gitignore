@@ -1,0 +1,12 @@
+/bin/
+/data/
+/evidence/**
+!/evidence/.gitkeep
+*.pem
+*.key
+*.secret.json
+*.jwt
+.env
+.DS_Store
+__pycache__/
+*.py[cod]
