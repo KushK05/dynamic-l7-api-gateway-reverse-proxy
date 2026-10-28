@@ -1,10 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Single-instance Dynamic L7 API Gateway review environment
+Description: Low-cost single-instance Dynamic L7 gateway demo on t3.micro with disk-backed swap
 # Inputs are explicit so the deployment cannot guess a secret, SSH source, or key pair.
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
 Parameters:
-  LatestAL2023Arm64Ami:
+  LatestAL2023X86Ami:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
   RepositoryURL:
     Type: String
     Description: HTTPS URL of the public Git repository containing this project
@@ -18,8 +21,8 @@ Parameters:
     Type: AWS::EC2::KeyPair::KeyName
   InstanceType:
     Type: String
-    Default: c7g.large
-    AllowedValues: [c7g.large]
+    Default: t3.micro
+    AllowedValues: [t3.micro]
 Resources:
   # The instance can read exactly the one public-key secret configured for this review.
   GatewayRole:
@@ -52,8 +55,10 @@ Resources:
   GatewayInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !Ref LatestAL2023Arm64Ami
+      ImageId: !Ref LatestAL2023X86Ami
       InstanceType: !Ref InstanceType
+      # Standard CPU-credit mode prevents surplus-credit charges on this short demo host.
+      CreditSpecification: {CPUCredits: standard}
       KeyName: !Ref KeyPairName
       IamInstanceProfile: !Ref GatewayProfile
       SecurityGroupIds: [!GetAtt GatewaySecurityGroup.GroupId]
@@ -68,9 +73,16 @@ Resources:
           set -euxo pipefail
           dnf update -y
           dnf install -y docker git curl
+          # Add 2 GiB of encrypted EBS-backed swap to absorb short image-build memory peaks.
+          dd if=/dev/zero of=/swapfile bs=1M count=2048
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
+          echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
           systemctl enable --now docker
           mkdir -p /usr/local/lib/docker/cli-plugins
-          curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+          COMPOSE_ARCH="$(uname -m)"
+          curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$COMPOSE_ARCH -o /usr/local/lib/docker/cli-plugins/docker-compose
           chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           mkdir -p /opt/dynamic-l7
           git clone '${RepositoryURL}' /opt/dynamic-l7/app

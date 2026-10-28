@@ -4,12 +4,12 @@
 
 Build a high-performance Go Layer 7 gateway that validates route changes before publishing them, changes the active immutable config snapshot without restarting, and lets every request complete against one revision. The gateway verifies RS256 JWTs using public keys from AWS Secrets Manager, observes upstream health, ejects failed targets, and exposes a live review dashboard and reproducible fault/benchmark tools.
 
-The review deployment is one ARM64 EC2 `c7g.large` instance running Docker Compose. Four separate containers provide the gateway, upstream-v1, upstream-v2, and optional benchmark/fault tools. It demonstrates single-process atomic routing and upstream-process fault handling. It does not demonstrate multi-host scaling, consensus, or distributed linearizability. Results measured on one instance include shared-host and network-stack effects.
+The low-cost functional review deployment is one x86_64 EC2 `t3.micro` instance with 2 GiB of disk-backed swap, running Docker Compose. Four separate containers provide the gateway, upstream-v1, upstream-v2, and optional benchmark/fault tools. It demonstrates single-process atomic routing and upstream-process fault handling. It does not demonstrate multi-host scaling, consensus, or distributed linearizability. Performance acceptance targets below remain scoped to `c7g.large`; the `t3.micro` profile is for functional review only.
 
 ## Architecture and interfaces
 
 ```text
-                         EC2 c7g.large
+                         EC2 t3.micro + 2 GiB swap
        public :8080        Docker Compose network
 Client ----------------> Gateway -----------------> upstream-v1 :9101
                            |  |  \-----------------> upstream-v2 :9102
@@ -52,17 +52,17 @@ Admin plane has no application authentication in this one-instance academic setu
 3. **JWT and upstream resilience** - integrate Secrets Manager via AWS CLI and the EC2 instance role; cache verification keys in memory, refresh every five minutes, retain last-known-good keys, and support forced refresh. Verify JWT claims and algorithm. Add active health probes, ejection/recovery, timeout, and safe transport retry.
 4. **Metrics and review dashboard** - expose Prometheus counters and status data; sample a bounded rolling latency set for p50/p95/p99; render the status dashboard without a frontend build/dependency.
 5. **Fault and end-to-end checks** - script bad/missing JWTs, active traffic during config reloads, stale revisions, invalid configurations, upstream delays/errors/down state/recovery, and report generation under `evidence/`.
-6. **Benchmarks and EC2 delivery** - deploy one ARM64 EC2 host through CloudFormation, collect exact instance/container configuration, and benchmark direct upstream, proxy without JWT, proxy with JWT, and proxy during config reloads at 100/500/1000 RPS. Each run has 15 seconds warm-up, 60 seconds measurement, and three repetitions. Save JSON request/latency results, container CPU/memory snapshots, and a Markdown summary. Document rotation, preflight, and teardown.
+6. **Benchmarks and EC2 delivery** - deploy the low-cost functional review on one x86_64 `t3.micro` EC2 host through CloudFormation. The separate performance profile uses `c7g.large`; collect exact instance/container configuration, and benchmark direct upstream, proxy without JWT, proxy with JWT, and proxy during config reloads at 100/500/1000 RPS. Each run has 15 seconds warm-up, 60 seconds measurement, and three repetitions. Save JSON request/latency results, container CPU/memory snapshots, and a Markdown summary. Document rotation, preflight, and teardown.
 
 ## Test and acceptance plan
 
 - Unit tests cover config invariants, ambiguous priority, unsafe retry policy, path boundaries, weighted distribution, revision conflict and persistence across restart, JWT signature/claims, and proxy path/revision forwarding.
-- Build and static checks: `gofmt -w`, `go test ./...`, `go test -race ./...`, `go vet ./...`, `govulncheck ./...`, `docker compose config -q`, and multi-architecture image build for `linux/arm64`.
+- Build and static checks: `gofmt -w`, `go test ./...`, `go test -race ./...`, `go vet ./...`, `govulncheck ./...`, `docker compose config -q`, and multi-architecture image build for `linux/amd64` (the selected t3 demo host).
 - Run Compose integration checks against actual gateway and upstream processes. During continuous load, alternate valid route revisions and issue invalid and stale updates. Confirm every response carries a complete revision and no config-reload-induced gateway failures occur.
 - Confirm valid JWT acceptance and 401 for missing, malformed, forged, expired, wrong issuer/audience, unknown key ID, and unsupported algorithm.
 - Measure weighted distribution over 10,000 requests; an 80/20 route should land between 75/25 and 85/15.
 - Confirm a stopped target is ejected within 3 seconds and returns within 10 seconds after healthy recovery. Confirm POST is never retried; retry is limited to GET/HEAD on transport failure.
-- On `c7g.large`, target at least 90% of direct-upstream throughput at 500 RPS, no 5xx or transport errors when dependencies are healthy, proxy-only p95 overhead below 10 ms, and less than 20% p95 increase when JWT verification is enabled. Keep results even when targets are missed; the benchmark is not a substitute for multi-host performance testing.
+- If running the performance profile on `c7g.large`, target at least 90% of direct-upstream throughput at 500 RPS, no 5xx or transport errors when dependencies are healthy, proxy-only p95 overhead below 10 ms, and less than 20% p95 increase when JWT verification is enabled. Do not use the low-cost `t3.micro` demo for these acceptance targets. Keep results even when targets are missed; the benchmark is not a substitute for multi-host performance testing.
 
 ## Project review demonstration (10 to 12 minutes)
 

@@ -2,7 +2,7 @@
 
 Phase 2 builds a custom Go Layer 7 gateway that applies validated route updates atomically while requests continue, checks RS256 JWTs against public verification keys stored in AWS Secrets Manager, and reports route, traffic, and upstream health in a small live dashboard.
 
-The deployment uses one ARM64 EC2 `c7g.large` host and Docker Compose. The gateway, two upstreams, and benchmark/fault tools run in separate containers. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. The single-host layout is for an academic review and is not evidence of multi-host scalability or distributed linearizability.
+The low-cost review deployment uses one x86_64 EC2 `t3.micro` host with 2 GiB of disk-backed swap and Docker Compose. The gateway, two upstreams, and optional benchmark/fault tools run in separate containers. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. This demo profile is for functional review, not the larger-instance performance targets or evidence of multi-host scalability or distributed linearizability.
 
 See [docs/PLAN.md](docs/PLAN.md) for implementation phases, acceptance targets, AWS setup, and the project review flow.
 
@@ -82,7 +82,7 @@ The admin plane has no application-level authentication in this academic single-
 
 ## AWS deployment
 
-Prerequisites: an AWS account and region with `c7g.large` quota, a public HTTPS Git repository for this project, an EC2 key pair, and an operator IP CIDR. These steps create billable resources. Use a disposable review stack and tear it down after the demonstration.
+Prerequisites: an AWS account and region with `t3.micro` quota, a public HTTPS Git repository for this project, an EC2 key pair, and an operator IP CIDR. These steps create billable resources. Use a disposable review stack and tear it down after the demonstration.
 
 1. Generate an RSA signing key and verification secret on a trusted workstation using the command above. Upload only the public key JSON to Secrets Manager:
 
@@ -129,7 +129,7 @@ scripts/review-smoke.sh
 JWT_VALID_TOKEN="$(go run ./cmd/jwtgen token -private "$HOME/.config/dynamic-l7/review-signing-private.pem")" scripts/e2e-tests.sh
 ```
 
-The benchmark matrix takes about 45 minutes at the default schedule (four scenarios, three rates, three repetitions, 15-second warm-up plus 60-second measurement). Run from the deployment host after exporting a short-lived `JWT_BENCH_TOKEN`:
+The full benchmark matrix takes about 45 minutes at the default schedule (four scenarios, three rates, three repetitions, 15-second warm-up plus 60-second measurement) and is intended for the larger `c7g.large` performance profile. Do not run it on the low-cost `t3.micro` demo host. Run from a benchmark host after exporting a short-lived `JWT_BENCH_TOKEN`:
 
 ```sh
 JWT_BENCH_TOKEN="$(go run ./cmd/jwtgen token -private "$HOME/.config/dynamic-l7/review-signing-private.pem")" scripts/benchmark-matrix.sh
