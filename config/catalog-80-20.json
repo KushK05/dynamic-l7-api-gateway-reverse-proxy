@@ -11,5 +11,27 @@
       {"id": "v1", "url": "http://upstream-v1:9101", "weight": 80},
       {"id": "v2", "url": "http://upstream-v2:9102", "weight": 20}
     ]
+  }, {
+    "id": "checkout",
+    "priority": 90,
+    "match": {"methods": ["POST"], "path_prefix": "/api/checkout"},
+    "rewrite_prefix": "/api/checkout",
+    "timeout_ms": 2000,
+    "retry_attempts": 0,
+    "jwt": {"required": true},
+    "upstreams": [
+      {"id": "v1", "url": "http://upstream-v1:9101", "weight": 100}
+    ]
+  }, {
+    "id": "secure-read",
+    "priority": 80,
+    "match": {"methods": ["GET", "HEAD"], "path_prefix": "/api/secure"},
+    "rewrite_prefix": "/api/secure",
+    "timeout_ms": 1500,
+    "retry_attempts": 0,
+    "jwt": {"required": true},
+    "upstreams": [
+      {"id": "v1", "url": "http://upstream-v1:9101", "weight": 100}
+    ]
   }]
 }

@@ -64,7 +64,7 @@ curl -fsS -X PUT http://127.0.0.1:9090/admin/v1/config \
   --data-binary @config/catalog-80-20.json
 ```
 
-The JSON configuration has version `1`, uniquely prioritized routes, method/host/path/header match conditions, optional path-prefix rewriting and JWT policy, timeout, at most one retry, and upstreams with weights totaling 100. Routes may retry only with explicitly listed idempotent methods. The runtime retry is made once after a transport error and only when a different weighted upstream is available. HTTP error responses such as 503 are surfaced and handled by health ejection, not retried after response bytes begin streaming.
+The JSON configuration has version `1`, uniquely prioritized routes, method/host/path/header match conditions, optional path-prefix rewriting and JWT policy, timeout, at most one retry, and upstreams with weights totaling 100. Route updates replace the complete configuration, so the catalog canary fixtures include the checkout and secure JWT routes unchanged. Routes may retry only with explicitly listed idempotent methods. The runtime retry is made once after a transport error and only when a different weighted upstream is available. HTTP error responses such as 503 are surfaced and handled by health ejection, not retried after response bytes begin streaming.
 
 Useful endpoints:
 
