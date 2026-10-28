@@ -4,7 +4,7 @@ Phase 2 builds a custom Go Layer 7 gateway that applies validated route updates 
 
 The low-cost review deployment uses one x86_64 EC2 `t3.micro` host with 2 GiB of disk-backed swap and Docker Compose. The gateway, two upstreams, and optional benchmark/fault tools run in separate containers. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. This demo profile is for functional review, not the larger-instance performance targets or evidence of multi-host scalability or distributed linearizability.
 
-See [docs/PLAN.md](docs/PLAN.md) for implementation phases, acceptance targets, AWS setup, and the project review flow.
+See [docs/PLAN.md](docs/PLAN.md) for implementation phases and acceptance targets. See [docs/REVIEW-GUIDE.md](docs/REVIEW-GUIDE.md) for the complete EC2 demonstration flow, reviewer Q&A, and source file guide.
 
 ## Local run
 
