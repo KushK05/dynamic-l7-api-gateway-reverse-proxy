@@ -55,6 +55,10 @@ function withoutAuto(r) {
 
 let controller = null;
 
+// CANARY_CANCELLED is thrown from a canary step's mutate closure when the
+// canary was rolled back or replaced; callers treat it as a quiet no-op.
+const CANARY_CANCELLED = Object.freeze({ canaryCancelled: true });
+
 // startCanary runs the progressive canary on a route: the target upstream goes
 // 10 -> 25 -> 50 -> 100 percent, one config revision every 8 seconds. Resolves
 // true when the first step was applied.
@@ -440,8 +444,12 @@ class RoutesPanel {
     const pct = CANARY_STEPS[step];
     const beforeW = new Map(c.before.upstreams.map((u) => [u.id, u.weight]));
     this.renderCanary(c);
+    // live is re-checked every time fn runs, including the 412 retry, so a
+    // rollback that lands while this step is in flight is never undone.
+    const live = () => this.canaries.get(c.routeId) === c && c.status === 'running';
     try {
       await this.mutateRoute(c.routeId, (r) => {
+        if (!live()) throw CANARY_CANCELLED;
         const idx = r.upstreams.findIndex((u) => u.id === c.target);
         if (idx < 0) throw new Error(`upstream "${c.target}" was removed from the route`);
         const w = rebalance(
@@ -452,14 +460,14 @@ class RoutesPanel {
         return { ...withoutAuto(r), upstreams: r.upstreams.map((u, i) => ({ ...u, weight: w[i] })) };
       });
     } catch (e) {
-      if (this.canaries.get(c.routeId) !== c) return false;
+      if (e === CANARY_CANCELLED || !live()) return false;
       c.status = 'failed';
       c.error = e.status === 400 ? e.error : e.message;
       this.renderCanary(c);
       toast(`Canary on "${c.routeId}" stopped at step ${step + 1}: ${c.error}`, 'error');
       return false;
     }
-    if (this.canaries.get(c.routeId) !== c || c.status !== 'running') return true;
+    if (!live()) return true;
     c.step = step;
     if (step >= CANARY_STEPS.length - 1) {
       c.status = 'done';
