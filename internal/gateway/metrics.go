@@ -17,18 +17,25 @@ type Metrics struct {
 	status                                   map[string]uint64
 	bytesIn, bytesOut                        uint64
 	started                                  time.Time
+	now                                      func() time.Time
+	ring                                     [seriesSeconds]secBucket
+
+	flightMu    sync.Mutex
+	flightTotal int64
+	flightUp    map[string]int64
 }
 
 func NewMetrics() *Metrics {
-	return &Metrics{requests: map[int64]uint64{}, status: map[string]uint64{}, started: time.Now()}
+	return &Metrics{requests: map[int64]uint64{}, status: map[string]uint64{}, started: time.Now(), now: time.Now, flightUp: map[string]int64{}}
 }
-func (m *Metrics) observe(rev int64, status int, d time.Duration, bytesIn, bytesOut uint64) {
+func (m *Metrics) observe(rev int64, route, upstream string, status int, d time.Duration, bytesIn, bytesOut uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.requests[rev]++
 	m.status[fmt.Sprint(status/100, "xx")]++
 	m.bytesIn += bytesIn
 	m.bytesOut += bytesOut
+	m.record(route, upstream, status, d)
 	m.latency = append(m.latency, float64(d)/float64(time.Millisecond))
 	if len(m.latency) > 10000 {
 		// Keep memory bounded by discarding the older half once the sample fills.

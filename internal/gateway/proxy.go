@@ -62,7 +62,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if route == nil {
 		http.NotFound(w, r)
-		p.metrics.observe(snap.Revision, 404, time.Since(start), requestBytes(r), capture.bytes)
+		p.metrics.observe(snap.Revision, "", "", 404, time.Since(start), requestBytes(r), capture.bytes)
 		return
 	}
 	if route.JWT != nil && route.JWT.Required {
@@ -73,14 +73,14 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			p.metrics.inc("jwt")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			p.metrics.observe(snap.Revision, 401, time.Since(start), requestBytes(r), capture.bytes)
+			p.metrics.observe(snap.Revision, route.ID, "", 401, time.Since(start), requestBytes(r), capture.bytes)
 			return
 		}
 	}
 	up, ok := p.pick(*route, id)
 	if !ok {
 		http.Error(w, "no healthy upstream", http.StatusServiceUnavailable)
-		p.metrics.observe(snap.Revision, 503, time.Since(start), requestBytes(r), capture.bytes)
+		p.metrics.observe(snap.Revision, route.ID, "", 503, time.Since(start), requestBytes(r), capture.bytes)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(route.TimeoutMS)*time.Millisecond)
@@ -112,7 +112,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Flush streaming responses immediately rather than buffering them in the proxy.
 	proxy.FlushInterval = -1
-	proxy.Transport = &retryTransport{base: p.transport, route: *route, first: up, proxy: p, seed: id}
+	rt := &retryTransport{base: p.transport, route: *route, first: up, proxy: p, seed: id}
+	proxy.Transport = rt
 	// Keep the gateway-generated ID authoritative. Upstreams receive it on the
 	// request, but their response copy is discarded to avoid duplicate headers.
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -124,12 +125,19 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "upstream unavailable", http.StatusBadGateway)
 	}
 	req := r.Clone(ctx)
+	p.metrics.begin(up.ID)
 	proxy.ServeHTTP(w, req)
+	p.metrics.end(up.ID)
 	status := capture.status
 	if status == 0 {
 		status = 200
 	}
-	p.metrics.observe(snap.Revision, status, time.Since(start), requestBytes(r), capture.bytes)
+	// Attribute to the upstream that actually served, which differs after a retry.
+	served := rt.served
+	if served == "" {
+		served = up.ID
+	}
+	p.metrics.observe(snap.Revision, route.ID, served, status, time.Since(start), requestBytes(r), capture.bytes)
 }
 
 // statusCapture is separate to preserve streaming writes while recording status.
@@ -230,9 +238,12 @@ type retryTransport struct {
 	first Upstream
 	proxy *Proxy
 	seed  string
+	// served is the upstream ID of the last attempt, read after the proxy returns.
+	served string
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.served = t.first.ID
 	resp, err := t.base.RoundTrip(req)
 	if err == nil || t.route.RetryAttempts < 1 || (req.Method != "GET" && req.Method != "HEAD") {
 		return resp, err
@@ -255,6 +266,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	clone.Header = req.Header.Clone()
 	clone.Header.Set("X-Gateway-Upstream", next.ID)
 	t.proxy.metrics.inc("retry")
+	t.served = next.ID
 	return t.base.RoundTrip(clone)
 }
 func (p *Proxy) pickDifferent(r Route, seed, excluded string) (Upstream, bool) {
