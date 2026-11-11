@@ -92,6 +92,11 @@ export function routeErrors(r) {
   const seen = new Set();
   let sum = 0;
   ups.forEach((u, i) => {
+    // A null or non-object element (hand-edited JSON) is one bad row, not a crash.
+    if (!u || typeof u !== 'object') {
+      add(`up:${i}:id`, 'Invalid upstream ID.');
+      return;
+    }
     if (!SAFE_ID.test(u.id || '') || seen.has(u.id)) add(`up:${i}:id`, seen.has(u.id) ? 'Duplicate upstream.' : 'Invalid upstream ID.');
     seen.add(u.id);
     if (!validUpstreamURL(u.url || '')) add(`up:${i}:url`, 'Use an http(s) URL with a host, no credentials, query or fragment.');
@@ -121,6 +126,7 @@ export function configError(c) {
     const errs = routeErrors({ retry_attempts: 0, ...r });
     if (errs.length) return `route ${r.id}: ${errs[0].msg}`;
     for (const u of r.upstreams) {
+      if (!u || typeof u !== 'object') return 'every upstream must be an object';
       if (urls.has(u.id) && urls.get(u.id) !== u.url) return `upstream ID ${u.id} refers to more than one URL`;
       urls.set(u.id, u.url);
     }
@@ -366,7 +372,9 @@ export function openRouteForm({ mode, route, config, known = [], onSubmit }) {
     const ms = methods();
     if (ms.length) match.methods = ms;
     if (Object.keys(headers).length) match.headers = headers;
-    const out = { id: fId.value.trim(), priority: Number(fPrio.value), match, timeout_ms: Number(fTimeout.value), retry_attempts: fRetry.checked ? 1 : 0 };
+    // A blank priority is invalid (NaN), not silently 0.
+    const priority = fPrio.value.trim() === '' ? NaN : Number(fPrio.value);
+    const out = { id: fId.value.trim(), priority, match, timeout_ms: Number(fTimeout.value), retry_attempts: fRetry.checked ? 1 : 0 };
     const rw = fRewrite.value.trim();
     if (rw) out.rewrite_prefix = rw;
     if (fJwt.checked) out.jwt = { required: true };

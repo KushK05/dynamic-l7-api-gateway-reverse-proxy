@@ -115,7 +115,15 @@ class Scenarios {
 
   async resetAll() {
     await this.run(async () => {
-      const list = await getUpstreams();
+      const all = await getUpstreams();
+      // Only upstreams with an active (or unknown) fault: resetting a clean one
+      // still logs a "Faults cleared" event and would flood the feed.
+      const faulted = (u) => !u.fault || u.fault.delay_ms > 0 || u.fault.status > 0 || u.fault.unhealthy || u.fault.error_rate_percent > 0;
+      const list = all.filter(faulted);
+      if (!list.length) {
+        toast('No active faults to clear.', 'info');
+        return;
+      }
       const results = await Promise.allSettled(list.map((u) => resetFault(u.id)));
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed) toast(`Reset ${list.length - failed} of ${list.length} upstreams; ${failed} failed.`, 'error');
