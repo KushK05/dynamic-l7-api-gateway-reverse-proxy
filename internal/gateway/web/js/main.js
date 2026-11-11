@@ -6,6 +6,9 @@ import { createStore } from './store.js';
 import { Sparkline, TimeChart } from './charts.js';
 import { initTopology } from './topology.js';
 import { initRoutes } from './routes.js';
+import { initTraffic } from './traffic.js';
+import { initEvents } from './events.js';
+import { initScenarios } from './scenarios.js';
 import { colorFor, colorSlot, fmtDuration, fmtMs, fmtMsParts, fmtNum, fmtPct, fmtRate, fmtRateParts } from './format.js';
 
 const $ = (id) => document.getElementById(id);
@@ -251,7 +254,7 @@ initKpis(store);
 const charts = initCharts(store);
 initTopology($('topology'), store);
 initRoutes($('routes'), store);
-// Later panels plug in here, before start():
-//   initTraffic($('traffic'), store); initEvents($('events'), store, charts);
-void charts;
+const traffic = initTraffic($('traffic'), store);
+initScenarios(traffic.scenarios, store);
+initEvents($('events'), store, charts);
 store.start();
