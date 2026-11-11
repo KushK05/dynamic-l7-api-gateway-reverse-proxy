@@ -54,7 +54,7 @@ Click nothing yet. Point at the layout: Clients on the left, then the Gateway, t
 
 ### 2. Start Steady traffic (1:30 - 2:30)
 
-In Traffic control, click the Steady preset (150 rps), then Start. Say: "The load generator lives inside the gateway and only calls its own public data plane, so every number you see is real proxy traffic." Watch the dots speed up, the KPIs fill in, and the Throughput and Latency charts start drawing. Note that orders-b and search-b show higher latency than their siblings.
+In Traffic control, click the Steady preset (150 rps); it starts the generator immediately (the Start button becomes Stop). Say: "The load generator lives inside the gateway and only calls its own public data plane, so every number you see is real proxy traffic." Watch the dots speed up, the KPIs fill in, and the Throughput and Latency charts start drawing. Note that orders-b and search-b show higher latency than their siblings.
 
 ### 3. Header-based routing (2:30 - 3:45)
 
@@ -65,7 +65,7 @@ curl -si "$GW/api/inventory/items" | grep -i x-upstream-id                    # 
 curl -si -H 'X-Region: eu' "$GW/api/inventory/items" | grep -i x-upstream-id   # inventory-eu
 ```
 
-Note for the audience: the built-in load generator copies a route's header match onto its requests, so generated `inventory` traffic always carries `X-Region: eu` and lands on inventory-eu. The US route only sees traffic when you curl without the header. In the route mix you can give `inventory-default` a share too, but remember it sends the plain request, which is exactly the US case.
+Note for the audience: the built-in load generator copies a route's header match onto its requests, so generated `inventory` traffic always carries `X-Region: eu` and lands on inventory-eu. The US route only sees traffic when you curl without the header. In Route mix (collapsed by default, click its header to expand) you can give `inventory-default` a share too, but remember it sends the plain request, which is exactly the US case.
 
 ### 4. Weights and live shift (3:45 - 5:00)
 
@@ -77,7 +77,7 @@ On `catalog`, pick v2 as the canary target and click Start canary (or the Canary
 
 ### 6. Add a route live with catalog-v3 (6:30 - 7:45)
 
-Click Add route. Route ID `catalog-next`, priority `95`, method GET, path prefix `/api/next`, rewrite prefix `/api/next`, timeout 1500. Add upstream `catalog-v3` (it is in the known-upstreams dropdown, URL `http://catalog-v3:9103`) at weight 100, then Add route. Say: "No restart. The new route and the catalog-v3 node just appeared in the topology." Then `curl -si "$GW/api/next/ok" | grep -i x-upstream-id` shows `catalog-v3`. In Traffic control, give the new route a share in Route mix if you like.
+Click Add route. Route ID `catalog-next`, priority `95`, method GET, path prefix `/api/next`, rewrite prefix `/api/next`, timeout 1500. Add upstream `catalog-v3` (it is in the known-upstreams dropdown, URL `http://catalog-v3:9103`) at weight 100, then Add route. Say: "No restart. The new route and the catalog-v3 node just appeared in the topology." Then `curl -si "$GW/api/next/ok" | grep -i x-upstream-id` shows `catalog-v3`. In Traffic control, expand Route mix and give the new route a share if you like.
 
 ### 7. JWT rejections (7:45 - 8:30)
 
