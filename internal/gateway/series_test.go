@@ -310,3 +310,33 @@ func TestInFlightReturnsToZeroAfterRequests(t *testing.T) {
 		t.Fatalf("in flight after requests: %d %v", tot, ups)
 	}
 }
+
+func TestSeries300KeepsOldestWhenCurrentSecondHasData(t *testing.T) {
+	m, c := newClockMetrics()
+	oldest := c.Now().Unix()
+	m.observe(1, "r", "u", 200, time.Millisecond, 0, 0)
+	c.Advance(300 * time.Second) // oldest is now the 300th completed second
+	m.observe(1, "r", "u", 200, time.Millisecond, 0, 0)
+	s := m.Series(300)
+	if s[0].TS != oldest || s[0].Total.RPS != 1 {
+		t.Fatalf("oldest second lost: ts=%d rps=%v want ts=%d", s[0].TS, s[0].Total.RPS, oldest)
+	}
+}
+
+func TestInFlightReturnsToZeroAfterAbortedBody(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		io.WriteString(w, "partial")
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
+	}))
+	defer up.Close()
+	p, m, _ := newTestProxy(t, Route{ID: "r", Priority: 1, Match: Match{PathPrefix: "/"}, TimeoutMS: 5000, Upstreams: []Upstream{{ID: "u", URL: up.URL, Weight: 100}}})
+	func() {
+		defer func() { recover() }() // ReverseProxy re-panics ErrAbortHandler
+		p.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "http://gateway/", nil))
+	}()
+	if tot, ups := m.InFlight(); tot != 0 || len(ups) != 0 {
+		t.Fatalf("gauge leaked: %d %v", tot, ups)
+	}
+}

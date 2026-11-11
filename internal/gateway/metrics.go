@@ -18,7 +18,7 @@ type Metrics struct {
 	bytesIn, bytesOut                        uint64
 	started                                  time.Time
 	now                                      func() time.Time
-	ring                                     [seriesSeconds]secBucket
+	ring                                     [ringSize]secBucket
 
 	flightMu    sync.Mutex
 	flightTotal int64

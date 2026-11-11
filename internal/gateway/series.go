@@ -9,6 +9,9 @@ var latencyBounds = [...]float64{0.25, 0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 50,
 const (
 	histBuckets   = len(latencyBounds) + 1
 	seriesSeconds = 300
+	// ringSize has one spare slot so the in-progress second never shares a slot
+	// with the oldest completed second of a 300 second query.
+	ringSize = seriesSeconds + 1
 )
 
 type histogram [histBuckets]uint64
@@ -132,7 +135,7 @@ type SeriesPoint struct {
 // record adds one request to the current-second bucket. Caller holds m.mu.
 func (m *Metrics) record(route, upstream string, status int, d time.Duration) {
 	sec := m.now().Unix()
-	b := &m.ring[sec%seriesSeconds]
+	b := &m.ring[sec%ringSize]
 	if b.sec != sec || b.routes == nil {
 		b.reset(sec)
 	}
@@ -164,7 +167,7 @@ func clampSeconds(n int) int {
 func (m *Metrics) aggregate(from, to int64) (total secStat, routes, upstreams, edges map[string]*secStat) {
 	routes, upstreams, edges = map[string]*secStat{}, map[string]*secStat{}, map[string]*secStat{}
 	for sec := from; sec <= to; sec++ {
-		b := &m.ring[sec%seriesSeconds]
+		b := &m.ring[sec%ringSize]
 		if b.sec != sec || b.routes == nil {
 			continue
 		}

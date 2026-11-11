@@ -125,9 +125,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "upstream unavailable", http.StatusBadGateway)
 	}
 	req := r.Clone(ctx)
-	p.metrics.begin(up.ID)
-	proxy.ServeHTTP(w, req)
-	p.metrics.end(up.ID)
+	func() {
+		// Deferred so an aborted body copy (http.ErrAbortHandler panic) cannot leak the gauge.
+		p.metrics.begin(up.ID)
+		defer p.metrics.end(up.ID)
+		proxy.ServeHTTP(w, req)
+	}()
 	status := capture.status
 	if status == 0 {
 		status = 200
