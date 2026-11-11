@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"math"
@@ -332,10 +333,17 @@ func TestInFlightReturnsToZeroAfterAbortedBody(t *testing.T) {
 	}))
 	defer up.Close()
 	p, m, _ := newTestProxy(t, Route{ID: "r", Priority: 1, Match: Match{PathPrefix: "/"}, TimeoutMS: 5000, Upstreams: []Upstream{{ID: "u", URL: up.URL, Weight: 100}}})
+	var recovered any
 	func() {
-		defer func() { recover() }() // ReverseProxy re-panics ErrAbortHandler
-		p.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "http://gateway/", nil))
+		defer func() { recovered = recover() }()
+		req := httptest.NewRequest("GET", "http://gateway/", nil)
+		// ReverseProxy only panics on a failed body copy when serving under a real http.Server.
+		req = req.WithContext(context.WithValue(req.Context(), http.ServerContextKey, &http.Server{}))
+		p.ServeHTTP(httptest.NewRecorder(), req)
 	}()
+	if recovered != http.ErrAbortHandler {
+		t.Fatalf("expected ErrAbortHandler panic, got %v", recovered)
+	}
 	if tot, ups := m.InFlight(); tot != 0 || len(ups) != 0 {
 		t.Fatalf("gauge leaked: %d %v", tot, ups)
 	}
