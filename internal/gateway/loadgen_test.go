@@ -149,6 +149,11 @@ func TestLoadBuildRequest(t *testing.T) {
 	if len(b) == 0 {
 		t.Fatal("expected a body")
 	}
+	// The default settings send 10% invalid tokens; pin 0% so the valid-token
+	// assertion is deterministic.
+	if _, err := g.Apply(LoadSettings{RPS: 0, Concurrency: 1, InvalidTokenPercent: 0}); err != nil {
+		t.Fatal(err)
+	}
 	req, _ = g.buildRequest(context.Background(), routes[1])
 	if req.Method != "GET" || req.Header.Get("Authorization") != "Bearer good" || req.URL.Path[:len("/secure/item-")] != "/secure/item-" || req.Body != nil && req.Body != http.NoBody {
 		t.Fatalf("bad jwt request: %+v", req)
