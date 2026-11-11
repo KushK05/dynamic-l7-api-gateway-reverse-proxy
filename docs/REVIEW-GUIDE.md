@@ -79,7 +79,7 @@ Paste the token only into a hidden prompt when a script asks for it. Never put t
 
 ## Live dashboard and demo config
 
-`docker-compose.yml` mounts `config/demo.json` by default: the original catalog, checkout and secure routes plus `users` (auto weight), `orders`, `search`, header-routed `inventory` (`X-Region: eu`) with `inventory-default`, and a spare `catalog-v3` upstream for adding a route live. It starts eleven mock upstream containers with different latencies. Set `GATEWAY_CONFIG=./config/config.json` to use the original two-upstream config. Persisted config in the `gateway-data` volume wins over the bootstrap file, so run `docker compose down -v` to reset.
+`docker-compose.yml` mounts `config/demo.json` by default: the original catalog, checkout and secure routes plus `users` (auto weight), `orders`, `search`, header-routed `inventory` (`X-Region: eu`) with `inventory-default`, and a spare `catalog-v3` upstream for adding a route live. All eleven mock upstream containers always start (small Go processes with different latencies) and share the gateway's single image, which `docker compose up --build` builds once. `GATEWAY_CONFIG=./config/config.json` only changes the bootstrap routes back to the original three. The `bench` tool reuses the same image, so run `docker compose build` first on a fresh machine before `--profile tools run bench`. Persisted config in the `gateway-data` volume wins over the bootstrap file, so run `docker compose down -v` to reset.
 
 The dashboard (`/dashboard` on the admin port, via the SSH tunnel) has live KPIs, an animated topology with click-to-inject faults, a Traffic control panel with a built-in load generator (`-load-max-rps`, default 3000; `LOADGEN_BEARER_TOKEN` supplies a valid JWT for protected routes), scenarios, an event feed, charts and a Routes editor. It uses these admin endpoints in addition to config and status:
 
@@ -92,7 +92,7 @@ The dashboard (`/dashboard` on the admin port, via the SSH tunnel) has live KPIs
 | `POST /admin/v1/upstreams/{id}/fault`, `POST /admin/v1/upstreams/{id}/reset` | Fault injection |
 | `GET /admin/v1/stream` | Server-sent events feed |
 
-Mutating admin calls need `Content-Type: application/json` (otherwise `415`). A `t3.micro` can run this with Steady traffic or lower; use a `t3.large` for Busy, Spike and Break it.
+Mutating admin calls need `Content-Type: application/json` (otherwise `415`). A `t3.micro` can run this with Steady traffic or lower (set `LOAD_MAX_RPS` to about 300); use a `t3.large` for Busy, Spike and Break it.
 
 ## Live review flow
 

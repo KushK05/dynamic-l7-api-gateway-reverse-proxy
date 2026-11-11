@@ -2,7 +2,7 @@
 
 Phase 2 builds a custom Go Layer 7 gateway that applies validated route updates atomically while requests continue, checks RS256 JWTs against public verification keys stored in AWS Secrets Manager, and reports route, traffic, and upstream health in a small live dashboard.
 
-The live dashboard demo is recommended on one x86_64 EC2 `t3.large` host (the CloudFormation default). The low-cost option is a `t3.micro` host with 2 GiB of disk-backed swap, which is enough for light traffic and the small `config/config.json` but not for the Busy or Break it traffic presets. Both run Docker Compose. The gateway, the mock upstreams (two by default in `config/config.json`, eleven with the demo config), and optional benchmark/fault tools run in separate containers. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. This demo profile is for functional review, not the larger-instance performance targets or evidence of multi-host scalability or distributed linearizability.
+The live dashboard demo is recommended on one x86_64 EC2 `t3.large` host (the CloudFormation default). The low-cost option is a `t3.micro` host with 2 GiB of disk-backed swap, which is enough for light traffic (lower `LOAD_MAX_RPS`, for example `LOAD_MAX_RPS=300`) but not for the Busy or Break it traffic presets. Both run Docker Compose. The gateway, eleven small mock upstream processes (always started, whatever the config), and optional benchmark/fault tools run in separate containers that share one image, built once. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. This demo profile is for functional review, not the larger-instance performance targets or evidence of multi-host scalability or distributed linearizability.
 
 For a presenter run sheet of the live dashboard, see [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md).
 
@@ -25,6 +25,8 @@ GATEWAY_PORT=18080 ADMIN_PORT=19090 docker compose up --build -d
 BASE_URL=http://127.0.0.1:18080 ADMIN_URL=http://127.0.0.1:19090 scripts/review-smoke.sh
 ```
 
+Compose builds a single image (`dynamic-l7-gateway:local`, from the `gateway` service) and every other service, including the opt-in `bench` tool, reuses it with `pull_policy: never`. `docker compose up --build` therefore builds exactly once. The tools profile does not build anything itself, so on a fresh machine run `docker compose build` (or `up --build`) before `docker compose --profile tools run bench` or the scripts that use it.
+
 To stop the local stack:
 
 ```sh
@@ -33,7 +35,7 @@ docker compose down
 
 ### Demo topology and the live dashboard
 
-Compose mounts [config/demo.json](config/demo.json) by default. It is a superset of `config/config.json` (same `catalog`, `checkout`, `secure-read` routes) plus `users` (auto weight), `orders`, `search`, a header-routed `inventory` (`X-Region: eu`) with an `inventory-default` fallback, and a `catalog-v3` upstream that no route uses yet so it can be added live. Each mock upstream has its own base delay and jitter in `docker-compose.yml` so latency differences are visible. Use `GATEWAY_CONFIG=./config/config.json` for the original two-upstream setup.
+Compose mounts [config/demo.json](config/demo.json) by default. It is a superset of `config/config.json` (same `catalog`, `checkout`, `secure-read` routes) plus `users` (auto weight), `orders`, `search`, a header-routed `inventory` (`X-Region: eu`) with an `inventory-default` fallback, and a `catalog-v3` upstream that no route uses yet so it can be added live. Each mock upstream has its own base delay and jitter in `docker-compose.yml` so latency differences are visible. All eleven upstream containers always run (they are small Go processes); `GATEWAY_CONFIG=./config/config.json` only swaps the bootstrap routes back to the original catalog, checkout and secure routes.
 
 The gateway persists the active config in the `gateway-data` volume and that persisted state wins over the bootstrap file on later starts. After editing a config file or finishing a demo, run `docker compose down -v` to delete the volume and start clean.
 

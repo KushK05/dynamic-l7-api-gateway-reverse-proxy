@@ -4,7 +4,7 @@ This is the presenter script for the live dashboard. Each beat lists what to cli
 
 ## Setup (before the audience arrives)
 
-Recommended host: EC2 `t3.large` (2 vCPU, 8 GiB). It runs the gateway plus 11 mock upstream containers and the built-in load generator comfortably. A `t3.micro` still works for light traffic (use Steady or lower, not Busy or Break it).
+Recommended host: EC2 `t3.large` (2 vCPU, 8 GiB). It runs the gateway plus 11 mock upstream containers (always started, sharing one image built once) and the built-in load generator comfortably. A `t3.micro` still works for light traffic (use Steady or lower, not Busy or Break it).
 
 1. Start the stack with the demo config (`config/demo.json` is the Compose default). To get the valid-token JWT beats, pass a token for the load generator:
 
@@ -114,4 +114,4 @@ Click Idle, then Reset all faults. For a full return to the bootstrap config run
 - **Mutating call returns 415:** admin writes need `Content-Type: application/json`.
 - **412 on a config save:** someone else changed the config; reload the dashboard and retry.
 - **Port 8080 or 9090 busy locally:** `GATEWAY_PORT=18080 ADMIN_PORT=19090 docker compose up -d`.
-- **Containers restart on a t3.micro:** use `config/config.json` (`GATEWAY_CONFIG=./config/config.json`) and light traffic, or move to a larger instance type.
+- **Containers restart or the host crawls on a t3.micro:** all 11 upstream containers always run, whatever `GATEWAY_CONFIG` says, so the config does not reduce load. Start with `LOAD_MAX_RPS=300`, stay at Steady or lower, or move to a larger instance type.

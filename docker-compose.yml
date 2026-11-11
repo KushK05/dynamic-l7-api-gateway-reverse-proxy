@@ -1,7 +1,9 @@
 services:
   # Public data plane and loopback-only admin plane share the same gateway process.
+  # The one image holding every binary is built here once; all other services reuse it.
   gateway:
     build: .
+    image: dynamic-l7-gateway:local
     command: ["-config", "/etc/gateway/config.json", "-state", "/data/config.json", "-data-addr", ":8080", "-admin-addr", ":9090", "-load-max-rps", "${LOAD_MAX_RPS:-3000}"]
     environment:
       JWT_SECRET_ARN: ${JWT_SECRET_ARN:-}
@@ -42,75 +44,87 @@ services:
       - inventory-us
   # Separate target processes let fault tests stop either backend independently.
   upstream-v1:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: v1, PORT: "9101"}
     expose: ["9101"]
     restart: unless-stopped
   upstream-v2:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: v2, PORT: "9102"}
     expose: ["9102"]
     restart: unless-stopped
   # Demo upstreams: distinct base delay and jitter (ms) make latency differences visible in the dashboard.
   catalog-v3:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: catalog-v3, PORT: "9103", SERVICE: catalog, BASE_DELAY_MS: "6", JITTER_MS: "4"}
     expose: ["9103"]
     restart: unless-stopped
   users-a:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: users-a, PORT: "9104", SERVICE: users, BASE_DELAY_MS: "3", JITTER_MS: "2"}
     expose: ["9104"]
     restart: unless-stopped
   users-b:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: users-b, PORT: "9105", SERVICE: users, BASE_DELAY_MS: "12", JITTER_MS: "6"}
     expose: ["9105"]
     restart: unless-stopped
   orders-a:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: orders-a, PORT: "9106", SERVICE: orders, BASE_DELAY_MS: "8", JITTER_MS: "4"}
     expose: ["9106"]
     restart: unless-stopped
   orders-b:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: orders-b, PORT: "9107", SERVICE: orders, BASE_DELAY_MS: "45", JITTER_MS: "15"}
     expose: ["9107"]
     restart: unless-stopped
   search-a:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: search-a, PORT: "9108", SERVICE: search, BASE_DELAY_MS: "15", JITTER_MS: "8"}
     expose: ["9108"]
     restart: unless-stopped
   search-b:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: search-b, PORT: "9109", SERVICE: search, BASE_DELAY_MS: "60", JITTER_MS: "20"}
     expose: ["9109"]
     restart: unless-stopped
   inventory-eu:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: inventory-eu, PORT: "9110", SERVICE: inventory, BASE_DELAY_MS: "5", JITTER_MS: "3"}
     expose: ["9110"]
     restart: unless-stopped
   inventory-us:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: inventory-us, PORT: "9111", SERVICE: inventory, BASE_DELAY_MS: "25", JITTER_MS: "10"}
     expose: ["9111"]
     restart: unless-stopped
   # Opt-in tools share the private Compose network and are not kept running by default.
   bench:
-    build: .
+    image: dynamic-l7-gateway:local
+    pull_policy: never
     entrypoint: ["/usr/local/bin/bench"]
     profiles: ["tools"]
     environment:
