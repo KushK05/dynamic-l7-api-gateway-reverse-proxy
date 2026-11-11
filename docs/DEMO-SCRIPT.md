@@ -96,7 +96,7 @@ Then raise Invalid JWT in Traffic control to about 20 percent. Say: "The generat
 
 ### 9. Kill an upstream, ejection, recovery (9:30 - 10:45)
 
-Pick `orders-a` (it carries 90 percent of orders) and click Kill upstream. Say: "The gateway's active probes fail twice, then it ejects the target." Watch the card turn to ejected, the 5xx KPI blip, and the event feed log the ejection. Then click Reset all faults: after the 3 second cooldown and a good probe, the target returns. Point at the event feed for the full timeline.
+Pick `orders-a` (it carries 90 percent of orders) and click Simulate failure. Say: "The gateway's active probes fail twice, then it ejects the target." Watch the card turn to ejected, the 5xx KPI blip, and the event feed log the ejection. Then click Reset all faults: after the 3 second cooldown and a good probe, the target returns. Point at the event feed for the full timeline.
 
 ### 10. Break it (10:45 - 11:45)
 

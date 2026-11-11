@@ -44,9 +44,9 @@ type upstreamView struct {
 // registerAdmin installs the dashboard endpoints on the admin mux.
 func (s *Server) registerAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/v1/requests", s.requestsEndpoint)
- mux.HandleFunc("POST /admin/v1/playground", s.playgroundEndpoint)
- mux.HandleFunc("GET /admin/v1/history", s.historyEndpoint)
- mux.HandleFunc("GET /admin/v1/series", s.seriesEndpoint)
+	mux.HandleFunc("POST /admin/v1/playground", s.playgroundEndpoint)
+	mux.HandleFunc("GET /admin/v1/history", s.historyEndpoint)
+	mux.HandleFunc("GET /admin/v1/series", s.seriesEndpoint)
 	mux.HandleFunc("GET /admin/v1/events", s.eventsEndpoint)
 	mux.HandleFunc("GET /admin/v1/load", s.loadGetEndpoint)
 	mux.HandleFunc("PUT /admin/v1/load", s.loadPutEndpoint)
