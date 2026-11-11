@@ -28,6 +28,9 @@ type Route struct {
 	RetryAttempts int        `json:"retry_attempts"`
 	JWT           *JWTPolicy `json:"jwt,omitempty"`
 	Upstreams     []Upstream `json:"upstreams"`
+	// AutoWeight lets the gateway shift weights at runtime; configured weights
+	// remain the baseline and fallback.
+	AutoWeight bool `json:"auto_weight,omitempty"`
 }
 
 // Match conditions are ANDed; each optional list matches any listed value.

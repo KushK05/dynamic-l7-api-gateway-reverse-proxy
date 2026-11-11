@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -23,11 +24,15 @@ type Health struct {
 	failThreshold int
 	cooldown      time.Duration
 	metrics       *Metrics
+	events        *EventLog
 }
 
 func NewHealth(m *Metrics) *Health {
 	return &Health{state: map[string]upstreamHealth{}, failThreshold: 2, cooldown: 3 * time.Second, metrics: m}
 }
+
+// SetEvents attaches an event log; call before probing starts.
+func (h *Health) SetEvents(e *EventLog) { h.events = e }
 func (h *Health) Check(id, base string) {
 	u, e := url.Parse(base)
 	if e != nil {
@@ -55,6 +60,9 @@ func (h *Health) Check(id, base string) {
 		}
 		if !old.Healthy {
 			old.LastChange = now.UTC()
+			if !old.EjectedUntil.IsZero() {
+				h.events.Add(Event{Kind: "health", Level: "success", Upstream: id, Message: fmt.Sprintf("Upstream %s recovered", id)})
+			}
 		}
 		old.Healthy = true
 		old.Failures = 0
@@ -69,6 +77,7 @@ func (h *Health) Check(id, base string) {
 		old.LastChange = now.UTC()
 		old.EjectedUntil = now.Add(h.cooldown)
 		h.metrics.inc("ejection")
+		h.events.Add(Event{Kind: "health", Level: "error", Upstream: id, Message: fmt.Sprintf("Upstream %s ejected after %d failed probes", id, old.Failures)})
 	}
 	h.state[id] = old
 }

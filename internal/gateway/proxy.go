@@ -24,6 +24,7 @@ type Proxy struct {
 	logger    *slog.Logger
 	clockSkew time.Duration
 	transport *http.Transport
+	weights   *AutoWeigher
 }
 
 func NewProxy(s *Store, k *KeyManager, h *Health, m *Metrics, l *slog.Logger) *Proxy {
@@ -176,7 +177,9 @@ func (w *statusCapture) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (p *Proxy) pick(r Route, seed string) (Upstream, bool) {
 	// Remove ejected targets and renormalize the remaining configured weights.
 	healthy := []Upstream{}
-	for _, u := range r.Upstreams {
+	// Effective weights equal configured ones unless auto-weight is active, in
+	// which case a configured-0 upstream is eligible once its effective weight is positive.
+	for _, u := range p.weights.Effective(r) {
 		if u.Weight > 0 && p.health.Allowed(u.ID) {
 			healthy = append(healthy, u)
 		}

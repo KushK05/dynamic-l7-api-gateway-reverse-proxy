@@ -1,7 +1,9 @@
 package gateway
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -69,5 +71,32 @@ func TestWeightedSelection(t *testing.T) {
 	}
 	if counts["v1"] < 7900 || counts["v1"] > 8100 {
 		t.Fatalf("expected 80/20 distribution, got %#v", counts)
+	}
+}
+
+func TestAutoWeightFieldRoundTripsAndValidates(t *testing.T) {
+	c := validConfig()
+	c.Routes[0].AutoWeight = true
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"auto_weight":true`) {
+		t.Fatalf("missing auto_weight in %s", b)
+	}
+	var back Config
+	if err = json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if !back.Routes[0].AutoWeight {
+		t.Fatal("auto_weight lost in round trip")
+	}
+	if err = Validate(back); err != nil {
+		t.Fatal(err)
+	}
+	c.Routes[0].AutoWeight = false
+	b, _ = json.Marshal(c)
+	if strings.Contains(string(b), "auto_weight") {
+		t.Fatal("auto_weight should be omitted when false")
 	}
 }

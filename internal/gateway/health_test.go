@@ -67,3 +67,45 @@ func TestHealthEjectionHonorsCooldownAndRequiresRecovery(t *testing.T) {
 		t.Fatal("healthy probe after expired cooldown should restore upstream")
 	}
 }
+
+func TestHealthEmitsOneEventPerTransition(t *testing.T) {
+	var unhealthy atomic.Bool
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if unhealthy.Load() {
+			http.Error(w, "unhealthy", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer up.Close()
+	m := NewMetrics()
+	h := NewHealth(m)
+	h.cooldown = 25 * time.Millisecond
+	ev := NewEventLog(50)
+	h.SetEvents(ev)
+	h.Check("v2", up.URL)
+	h.Check("v2", up.URL)
+	if n := len(ev.Recent(10)); n != 0 {
+		t.Fatalf("healthy probes must not emit, got %d", n)
+	}
+	unhealthy.Store(true)
+	for i := 0; i < 4; i++ {
+		h.Check("v2", up.URL)
+	}
+	got := ev.Recent(10)
+	if len(got) != 1 || got[0].Kind != "health" || got[0].Level != "error" || got[0].Upstream != "v2" || got[0].Message != "Upstream v2 ejected after 2 failed probes" {
+		t.Fatalf("ejection events: %+v", got)
+	}
+	unhealthy.Store(false)
+	h.Check("v2", up.URL) // inside cooldown: no event
+	if n := len(ev.Recent(10)); n != 1 {
+		t.Fatalf("cooldown probe must not emit, got %d", n)
+	}
+	time.Sleep(40 * time.Millisecond)
+	h.Check("v2", up.URL)
+	h.Check("v2", up.URL)
+	got = ev.Recent(10)
+	if len(got) != 2 || got[1].Level != "success" || got[1].Message != "Upstream v2 recovered" {
+		t.Fatalf("recovery events: %+v", got)
+	}
+}

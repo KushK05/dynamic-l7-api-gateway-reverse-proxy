@@ -21,17 +21,32 @@ type Server struct {
 	keys    *KeyManager
 	health  *Health
 	metrics *Metrics
+	events  *EventLog
+	weights *AutoWeigher
 	logger  *slog.Logger
 }
 
-func NewServer(c *ConfigStore, k *KeyManager, h *Health, m *Metrics, l *slog.Logger) *Server {
-	return &Server{configs: c, keys: k, health: h, metrics: m, logger: l}
+// ServerDeps bundles the shared components a Server needs. Events and Weights
+// may be nil; both are nil-safe.
+type ServerDeps struct {
+	Configs *ConfigStore
+	Keys    *KeyManager
+	Health  *Health
+	Metrics *Metrics
+	Events  *EventLog
+	Weights *AutoWeigher
+	Logger  *slog.Logger
+}
+
+func NewServer(d ServerDeps) *Server {
+	return &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, logger: d.Logger}
 }
 func (s *Server) Run(ctx context.Context, dataAddr, adminAddr string) error {
 	// Keep proxy traffic and administrative controls on separate listeners so
 	// Compose/AWS can expose only the data plane to clients.
 	dataMux := http.NewServeMux()
 	proxy := NewProxy(s.configs.Store(), s.keys, s.health, s.metrics, s.logger)
+	proxy.weights = s.weights
 	dataMux.Handle("/", proxy)
 	dataMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	dataMux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -96,9 +111,11 @@ func (s *Server) configEndpoint(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(e.Error(), "revision conflict") {
 				code = 412
 			}
+			s.events.Add(Event{Kind: "config", Level: "warn", Message: "Config rejected: " + e.Error()})
 			jsonResponse(w, code, map[string]any{"error": e.Error(), "revision": audit.OldRevision})
 			return
 		}
+		s.events.Add(Event{Kind: "config", Level: "success", Message: fmt.Sprintf("Config revision %d applied: %d routes", audit.NewRevision, len(c.Routes))})
 		w.Header().Set("ETag", fmt.Sprintf("\"%d\"", audit.NewRevision))
 		jsonResponse(w, 200, audit)
 	default:
@@ -113,7 +130,7 @@ func (s *Server) statusEndpoint(w http.ResponseWriter, r *http.Request) {
 	if k := s.keys.Current(); k != nil {
 		keyRev = k.Set.Revision
 	}
-	jsonResponse(w, 200, map[string]any{"revision": p.Revision, "secret_revision": keyRev, "upstreams": s.health.Snapshot(), "metrics": s.metrics.snapshot()})
+	jsonResponse(w, 200, map[string]any{"revision": p.Revision, "secret_revision": keyRev, "upstreams": s.health.Snapshot(), "metrics": s.metrics.snapshot(), "weights": s.weights.Weights()})
 }
 func (s *Server) refreshEndpoint(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -123,9 +140,11 @@ func (s *Server) refreshEndpoint(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	if e := s.keys.Refresh(ctx); e != nil {
+		s.events.Add(Event{Kind: "secrets", Level: "error", Message: "Secrets refresh failed: " + e.Error()})
 		jsonResponse(w, 502, map[string]any{"error": e.Error(), "retained_last_known_good": s.keys.Current() != nil})
 		return
 	}
+	s.events.Add(Event{Kind: "secrets", Level: "success", Message: "Secrets refreshed, revision " + s.keys.Current().Set.Revision})
 	jsonResponse(w, 200, map[string]string{"status": "refreshed", "revision": s.keys.Current().Set.Revision})
 }
 

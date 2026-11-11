@@ -29,7 +29,10 @@ func main() {
 	configs, err := gateway.OpenConfigStore(*statePath, initial)
 	fatal(logger, err)
 	metrics := gateway.NewMetrics()
+	events := gateway.NewEventLog(500)
 	health := gateway.NewHealth(metrics)
+	health.SetEvents(events)
+	weigher := gateway.NewAutoWeigher(configs.Store(), metrics, health, events)
 	keys := gateway.NewKeyManager(os.Getenv("JWT_SECRET_ARN"), 5*time.Minute)
 	if os.Getenv("JWT_SECRET_ARN") != "" || os.Getenv("JWT_KEYS_JSON") != "" {
 		// Bound startup retrieval so an unavailable secret service cannot hang boot.
@@ -46,6 +49,7 @@ func main() {
 	// Probe the currently active upstream set; health is deliberately ephemeral
 	// and rebuilt after restart rather than persisted as stale process state.
 	go health.Run(stop, configs.Store())
+	go weigher.Run(stop, 2*time.Second)
 	if os.Getenv("JWT_SECRET_ARN") != "" || os.Getenv("JWT_KEYS_JSON") != "" {
 		go func() {
 			// The manager enforces the five-minute cache TTL; the shorter tick lets
@@ -67,7 +71,7 @@ func main() {
 			}
 		}()
 	}
-	server := gateway.NewServer(configs, keys, health, metrics, logger)
+	server := gateway.NewServer(gateway.ServerDeps{Configs: configs, Keys: keys, Health: health, Metrics: metrics, Events: events, Weights: weigher, Logger: logger})
 	if err = server.Run(ctx, *dataAddr, *adminAddr); err != nil {
 		fatal(logger, err)
 	}
