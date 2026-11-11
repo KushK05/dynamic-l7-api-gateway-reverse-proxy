@@ -5,6 +5,7 @@
 import { createStore } from './store.js';
 import { Sparkline, TimeChart } from './charts.js';
 import { initTopology } from './topology.js';
+import { initRoutes } from './routes.js';
 import { colorFor, colorSlot, fmtDuration, fmtMs, fmtMsParts, fmtNum, fmtPct, fmtRate, fmtRateParts } from './format.js';
 
 const $ = (id) => document.getElementById(id);
@@ -249,8 +250,8 @@ initKpis(store);
 // charts is {throughput, latency, upstreams, errors}; the event feed uses it for setMarkers.
 const charts = initCharts(store);
 initTopology($('topology'), store);
+initRoutes($('routes'), store);
 // Later panels plug in here, before start():
-//   initRoutes($('routes'), store);
 //   initTraffic($('traffic'), store); initEvents($('events'), store, charts);
 void charts;
 store.start();

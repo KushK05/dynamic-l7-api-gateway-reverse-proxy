@@ -2,10 +2,14 @@
 //
 // Subscribers receive {type, state} where type is one of:
 //   'frame'  a new 1s frame arrived (state.frame, state.points updated)
-//   'config' the active config was (re)fetched (state.config, state.revision)
+//   'config' the active config was (re)fetched (state.config, state.revision,
+//            state.configRevision)
 //   'events' new activity events were appended (state.events)
 //   'conn'   the connection state changed, or history was reseeded on connect
 // state.conn is 'connecting' | 'live' | 'reconnecting' | 'offline'.
+// state.revision follows the newest revision seen (frames can move it ahead of
+// the config fetch); state.configRevision is the revision state.config was read
+// at, so writers pair it with that config for If-Match.
 
 import { getConfig } from './api.js';
 
@@ -22,7 +26,7 @@ const STALL_MS = 5000;
 export class Store {
   constructor(url = '/admin/v1/stream') {
     this.url = url;
-    this.state = { conn: 'connecting', frame: null, points: [], events: [], config: null, revision: null };
+    this.state = { conn: 'connecting', frame: null, points: [], events: [], config: null, revision: null, configRevision: null };
     this.subs = new Set();
     this.es = null;
     this.failures = 0;
@@ -180,6 +184,7 @@ export class Store {
       const { revision, config } = await getConfig();
       if (seq !== this.configSeq) return this.state.config;
       this.state.config = config;
+      this.state.configRevision = revision;
       if (this.state.revision == null || revision >= this.state.revision) this.state.revision = revision;
       this.emit('config');
       return config;
