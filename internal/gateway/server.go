@@ -23,10 +23,11 @@ type Server struct {
 	metrics *Metrics
 	events  *EventLog
 	weights *AutoWeigher
+	load    *LoadGen
 	logger  *slog.Logger
 }
 
-// ServerDeps bundles the shared components a Server needs. Events and Weights
+// ServerDeps bundles the shared components a Server needs. Events, Weights and Load
 // may be nil; both are nil-safe.
 type ServerDeps struct {
 	Configs *ConfigStore
@@ -35,11 +36,12 @@ type ServerDeps struct {
 	Metrics *Metrics
 	Events  *EventLog
 	Weights *AutoWeigher
+	Load    *LoadGen
 	Logger  *slog.Logger
 }
 
 func NewServer(d ServerDeps) *Server {
-	return &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, logger: d.Logger}
+	return &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, load: d.Load, logger: d.Logger}
 }
 func (s *Server) Run(ctx context.Context, dataAddr, adminAddr string) error {
 	// Keep proxy traffic and administrative controls on separate listeners so

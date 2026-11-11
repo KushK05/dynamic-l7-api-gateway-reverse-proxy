@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,6 +18,7 @@ func main() {
 	dataAddr := flag.String("data-addr", ":8080", "public data-plane listen address")
 	adminAddr := flag.String("admin-addr", ":9090", "private admin-plane listen address")
 	statePath := flag.String("state", "/data/config.json", "durable active configuration path")
+	loadMaxRPS := flag.Int("load-max-rps", 3000, "maximum requests per second the built-in load generator may produce")
 	flag.Parse()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	// Validate the shipped bootstrap config even when durable state already exists;
@@ -43,6 +45,7 @@ func main() {
 			logger.Error("JWT key load failed; last-known-good unavailable", "error", err)
 		}
 	}
+	loadgen := gateway.NewLoadGen(loadTarget(*dataAddr), configs.Store(), events, *loadMaxRPS, os.Getenv("LOADGEN_BEARER_TOKEN"))
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	stop := make(chan struct{})
@@ -50,6 +53,7 @@ func main() {
 	// and rebuilt after restart rather than persisted as stale process state.
 	go health.Run(stop, configs.Store())
 	go weigher.Run(stop, 2*time.Second)
+	go loadgen.Run(ctx)
 	if os.Getenv("JWT_SECRET_ARN") != "" || os.Getenv("JWT_KEYS_JSON") != "" {
 		go func() {
 			// The manager enforces the five-minute cache TTL; the shorter tick lets
@@ -71,11 +75,24 @@ func main() {
 			}
 		}()
 	}
-	server := gateway.NewServer(gateway.ServerDeps{Configs: configs, Keys: keys, Health: health, Metrics: metrics, Events: events, Weights: weigher, Logger: logger})
+	server := gateway.NewServer(gateway.ServerDeps{Configs: configs, Keys: keys, Health: health, Metrics: metrics, Events: events, Weights: weigher, Load: loadgen, Logger: logger})
 	if err = server.Run(ctx, *dataAddr, *adminAddr); err != nil {
 		fatal(logger, err)
 	}
 	close(stop)
+}
+
+// loadTarget turns the data listen address into a URL the in-process load
+// generator can reach: unspecified hosts become loopback.
+func loadTarget(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "http://127.0.0.1:8080"
+	}
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 // fatal emits startup or listener errors as structured logs before terminating.
