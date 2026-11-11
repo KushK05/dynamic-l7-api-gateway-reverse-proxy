@@ -135,7 +135,8 @@ Requirements:
   Quantile estimate = linear interpolation inside the bucket containing the rank (lower bound of
   the first bucket is 0; for the `+Inf` bucket return 10000).
 - A ring of 300 one-second buckets keyed by unix second. Each bucket holds a stat for the total,
-  per route ID, and per upstream ID: request count, 5xx count, 4xx count, histogram.
+  per route ID, per upstream ID, and per route>upstream edge: request count, 5xx count, 4xx
+  count, histogram.
   Requests with no matched route count only in the total. Requests with no chosen upstream
   (404, 401, 503 "no healthy upstream") count in total and route but not upstream.
 - `Metrics` gains an injectable clock (`now func() time.Time`, defaulting to `time.Now`) so
@@ -161,6 +162,7 @@ Requirements:
       Total     StatPoint            `json:"total"`
       Routes    map[string]StatPoint `json:"routes"`
       Upstreams map[string]StatPoint `json:"upstreams"`
+      Edges     map[string]StatPoint `json:"edges"` // key: route + ">" + upstream, e.g. "catalog>v1"
   }
   func (m *Metrics) Series(seconds int) []SeriesPoint // last N COMPLETED seconds, oldest first, missing seconds as zero points; N clamped to 1..300
   func (m *Metrics) Window(seconds int) SeriesPoint   // aggregate of the last N completed seconds: rates averaged per second, quantiles from merged histograms; TS = newest second
@@ -481,8 +483,7 @@ The centerpiece of the demo, in the spirit of breakscale.
   sqrt scale and a cap (about 40 particles/s per edge, 600 alive total), travel time
   proportional to that hop's latency (clamped 0.4s..4s). Particle color: green success, amber
   4xx, red 5xx, sampled by the edge's status mix. 401 rejections stop at the route node with a
-  small burst. Route->upstream rps comes from per-upstream stats split by effective weight share
-  for upstreams shared by several routes.
+  small burst. Route->upstream rps and status mix come from `edges["<route>><upstream>"]`.
 - "Breaking" cues: node border and a pulsing halo go amber when error % > 2 or p99 > 250ms and
   red when error % > 10 or p99 > 1000ms or the upstream is ejected; ejected upstreams render
   greyed with a red badge and their edges turn red dashed.
