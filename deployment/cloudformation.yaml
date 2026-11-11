@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Low-cost single-instance Dynamic L7 gateway demo on t3.micro with disk-backed swap
+Description: Single-instance Dynamic L7 gateway demo with live dashboard, sized t3.large by default (t3.micro supported as the low-cost option) with disk-backed swap
 # Inputs are explicit so the deployment cannot guess a secret, SSH source, or key pair.
 Metadata:
   AWSToolsMetrics:
@@ -21,8 +21,12 @@ Parameters:
     Type: AWS::EC2::KeyPair::KeyName
   InstanceType:
     Type: String
-    Default: t3.micro
-    AllowedValues: [t3.micro]
+    # t3.large is the recommended size for the live dashboard demo; t3.micro is the low-cost option.
+    Default: t3.large
+    AllowedValues: [t3.micro, t3.medium, t3.large, t3.xlarge, c6i.large, c6i.xlarge, m6i.large]
+Conditions:
+  # CreditSpecification is valid only for burstable T instance types.
+  IsBurstable: !Equals [!Select [0, !Split ['.', !Ref InstanceType]], t3]
 Resources:
   # The instance can read exactly the one public-key secret configured for this review.
   GatewayRole:
@@ -57,8 +61,8 @@ Resources:
     Properties:
       ImageId: !Ref LatestAL2023X86Ami
       InstanceType: !Ref InstanceType
-      # Standard CPU-credit mode prevents surplus-credit charges on this short demo host.
-      CreditSpecification: {CPUCredits: standard}
+      # Standard CPU-credit mode prevents surplus-credit charges on this short demo host (T types only).
+      CreditSpecification: !If [IsBurstable, {CPUCredits: standard}, !Ref 'AWS::NoValue']
       KeyName: !Ref KeyPairName
       IamInstanceProfile: !Ref GatewayProfile
       SecurityGroupIds: [!GetAtt GatewaySecurityGroup.GroupId]

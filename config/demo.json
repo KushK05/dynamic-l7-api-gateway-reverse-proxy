@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "id": "catalog",
+      "priority": 100,
+      "match": {
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "path_prefix": "/api/catalog"
+      },
+      "rewrite_prefix": "/api/catalog",
+      "timeout_ms": 1500,
+      "retry_attempts": 1,
+      "upstreams": [
+        {
+          "id": "v1",
+          "url": "http://upstream-v1:9101",
+          "weight": 100
+        },
+        {
+          "id": "v2",
+          "url": "http://upstream-v2:9102",
+          "weight": 0
+        }
+      ]
+    },
+    {
+      "id": "checkout",
+      "priority": 90,
+      "match": {
+        "methods": [
+          "POST"
+        ],
+        "path_prefix": "/api/checkout"
+      },
+      "rewrite_prefix": "/api/checkout",
+      "timeout_ms": 2000,
+      "retry_attempts": 0,
+      "jwt": {
+        "required": true
+      },
+      "upstreams": [
+        {
+          "id": "v1",
+          "url": "http://upstream-v1:9101",
+          "weight": 100
+        }
+      ]
+    },
+    {
+      "id": "secure-read",
+      "priority": 80,
+      "match": {
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "path_prefix": "/api/secure"
+      },
+      "rewrite_prefix": "/api/secure",
+      "timeout_ms": 1500,
+      "retry_attempts": 0,
+      "jwt": {
+        "required": true
+      },
+      "upstreams": [
+        {
+          "id": "v1",
+          "url": "http://upstream-v1:9101",
+          "weight": 100
+        }
+      ]
+    },
+    {
+      "id": "users",
+      "priority": 70,
+      "match": {
+        "methods": [
+          "GET"
+        ],
+        "path_prefix": "/api/users"
+      },
+      "rewrite_prefix": "/api/users",
+      "timeout_ms": 1500,
+      "retry_attempts": 0,
+      "auto_weight": true,
+      "upstreams": [
+        {
+          "id": "users-a",
+          "url": "http://users-a:9104",
+          "weight": 50
+        },
+        {
+          "id": "users-b",
+          "url": "http://users-b:9105",
+          "weight": 50
+        }
+      ]
+    },
+    {
+      "id": "orders",
+      "priority": 60,
+      "match": {
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "path_prefix": "/api/orders"
+      },
+      "rewrite_prefix": "/api/orders",
+      "timeout_ms": 2000,
+      "retry_attempts": 0,
+      "upstreams": [
+        {
+          "id": "orders-a",
+          "url": "http://orders-a:9106",
+          "weight": 90
+        },
+        {
+          "id": "orders-b",
+          "url": "http://orders-b:9107",
+          "weight": 10
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "priority": 50,
+      "match": {
+        "methods": [
+          "GET"
+        ],
+        "path_prefix": "/api/search"
+      },
+      "rewrite_prefix": "/api/search",
+      "timeout_ms": 1500,
+      "retry_attempts": 1,
+      "upstreams": [
+        {
+          "id": "search-a",
+          "url": "http://search-a:9108",
+          "weight": 70
+        },
+        {
+          "id": "search-b",
+          "url": "http://search-b:9109",
+          "weight": 30
+        }
+      ]
+    },
+    {
+      "id": "inventory",
+      "priority": 45,
+      "match": {
+        "methods": [
+          "GET"
+        ],
+        "path_prefix": "/api/inventory",
+        "headers": {
+          "X-Region": "eu"
+        }
+      },
+      "rewrite_prefix": "/api/inventory",
+      "timeout_ms": 1500,
+      "retry_attempts": 0,
+      "upstreams": [
+        {
+          "id": "inventory-eu",
+          "url": "http://inventory-eu:9110",
+          "weight": 100
+        }
+      ]
+    },
+    {
+      "id": "inventory-default",
+      "priority": 40,
+      "match": {
+        "methods": [
+          "GET"
+        ],
+        "path_prefix": "/api/inventory"
+      },
+      "rewrite_prefix": "/api/inventory",
+      "timeout_ms": 1500,
+      "retry_attempts": 0,
+      "upstreams": [
+        {
+          "id": "inventory-us",
+          "url": "http://inventory-us:9111",
+          "weight": 100
+        }
+      ]
+    }
+  ]
+}

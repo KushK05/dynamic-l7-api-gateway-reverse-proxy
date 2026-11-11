@@ -2,7 +2,9 @@
 
 Phase 2 builds a custom Go Layer 7 gateway that applies validated route updates atomically while requests continue, checks RS256 JWTs against public verification keys stored in AWS Secrets Manager, and reports route, traffic, and upstream health in a small live dashboard.
 
-The low-cost review deployment uses one x86_64 EC2 `t3.micro` host with 2 GiB of disk-backed swap and Docker Compose. The gateway, two upstreams, and optional benchmark/fault tools run in separate containers. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. This demo profile is for functional review, not the larger-instance performance targets or evidence of multi-host scalability or distributed linearizability.
+The live dashboard demo is recommended on one x86_64 EC2 `t3.large` host (the CloudFormation default). The low-cost option is a `t3.micro` host with 2 GiB of disk-backed swap, which is enough for light traffic and the small `config/config.json` but not for the Busy or Break it traffic presets. Both run Docker Compose. The gateway, the mock upstreams (two by default in `config/config.json`, eleven with the demo config), and optional benchmark/fault tools run in separate containers. Port `8080` is the public data plane. Port `9090` is published only on host loopback and should be reached remotely through an SSH tunnel. This demo profile is for functional review, not the larger-instance performance targets or evidence of multi-host scalability or distributed linearizability.
+
+For a presenter run sheet of the live dashboard, see [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md).
 
 See [docs/PLAN.md](docs/PLAN.md) for implementation phases and acceptance targets. See [docs/REVIEW-GUIDE.md](docs/REVIEW-GUIDE.md) for the complete EC2 demonstration flow, reviewer Q&A, and source file guide.
 
@@ -28,6 +30,16 @@ To stop the local stack:
 ```sh
 docker compose down
 ```
+
+### Demo topology and the live dashboard
+
+Compose mounts [config/demo.json](config/demo.json) by default. It is a superset of `config/config.json` (same `catalog`, `checkout`, `secure-read` routes) plus `users` (auto weight), `orders`, `search`, a header-routed `inventory` (`X-Region: eu`) with an `inventory-default` fallback, and a `catalog-v3` upstream that no route uses yet so it can be added live. Each mock upstream has its own base delay and jitter in `docker-compose.yml` so latency differences are visible. Use `GATEWAY_CONFIG=./config/config.json` for the original two-upstream setup.
+
+The gateway persists the active config in the `gateway-data` volume and that persisted state wins over the bootstrap file on later starts. After editing a config file or finishing a demo, run `docker compose down -v` to delete the volume and start clean.
+
+The dashboard at `/dashboard` (admin port) shows a KPI strip, an animated topology (click an upstream to inject faults, click a route to edit it), a Traffic control panel (RPS slider, Idle/Steady/Busy/Spike/Break it presets, concurrency, invalid JWT percent, route mix), scenarios (canary rollout, slow upstream, flaky upstream, kill upstream, reset all faults), an event feed with chart markers, four charts, and a Routes panel (linked weight sliders, Even split, Auto weight, progressive canary with rollback, add/edit/delete route, Config JSON editor). Every configuration change from the UI goes through `PUT /admin/v1/config` with `If-Match`; auto weight is an in-memory overlay that never creates a revision.
+
+Optional environment variables for `docker compose up`: `LOADGEN_BEARER_TOKEN` (valid JWT the load generator sends on JWT routes), `LOAD_MAX_RPS` (generator ceiling, default 3000), `GATEWAY_CONFIG` (bootstrap config path), `GATEWAY_PORT` and `ADMIN_PORT`. The gateway reads fault-eligible upstreams from `-known-upstreams` or `KNOWN_UPSTREAMS` (`id=url,id=url`).
 
 ## Configure a local JWT key set
 
@@ -55,7 +67,7 @@ Use that token as `Authorization: Bearer <token>` for `GET /api/secure/...` or `
 
 ## Routes and administration
 
-The checked-in starting configuration is [config/config.json](config/config.json). Route updates use `GET /admin/v1/config`, then `PUT /admin/v1/config` with the current revision in the `If-Match` header. A valid update is persisted and fsynced before the gateway publishes a new immutable snapshot. Revisions continue across process restarts. A stale revision returns `412`; malformed JSON returns `400`; invalid route configuration returns `400`; none changes the active configuration.
+The checked-in starting configuration is [config/config.json](config/config.json); the Compose demo uses [config/demo.json](config/demo.json). Route updates use `GET /admin/v1/config`, then `PUT /admin/v1/config` with the current revision in the `If-Match` header. A valid update is persisted and fsynced before the gateway publishes a new immutable snapshot. Revisions continue across process restarts. A stale revision returns `412`; malformed JSON returns `400`; invalid route configuration returns `400`; none changes the active configuration.
 
 ```sh
 curl -fsS http://127.0.0.1:9090/admin/v1/config
@@ -76,13 +88,22 @@ Useful endpoints:
 | `PUT /admin/v1/config` | Validated revision-checked update |
 | `GET /admin/v1/status` | Route and secret revisions, upstream health, traffic metrics |
 | `POST /admin/v1/secrets/refresh` | Force a Secrets Manager key refresh |
-| `GET /dashboard` | Live review dashboard |
+| `GET /admin/v1/series?seconds=N` | Per-second throughput, latency and per-upstream history for the charts |
+| `GET /admin/v1/events?since=SEQ` | Event feed entries (config, health, faults, traffic, weights) after a sequence number |
+| `GET /admin/v1/load`, `PUT /admin/v1/load` | Read or set the built-in load generator (rate, concurrency, invalid JWT percent, route mix) |
+| `GET /admin/v1/upstreams` | Known upstreams with URL, health and injected fault state |
+| `POST /admin/v1/upstreams/{id}/fault` | Inject delay, error rate or unhealthy state into a known upstream |
+| `POST /admin/v1/upstreams/{id}/reset` | Clear faults on one upstream |
+| `GET /admin/v1/stream` | Server-sent events feed that drives the dashboard |
+| `GET /dashboard` | Live review dashboard (embedded, no build step) |
+
+`GET /admin/v1/status` also returns the effective `weights`. Every mutating admin endpoint (`PUT` config, `PUT` load, fault and reset `POST`s) requires `Content-Type: application/json` and returns `415` otherwise.
 
 The admin plane has no application-level authentication in this academic single-host setup. Compose binds it to host loopback, and the EC2 security group does not expose port 9090. Keep SSH restricted to the operator's `/32`; use the CloudFormation output to open an SSH tunnel.
 
 ## Current EC2 student-account deployment
 
-The review setup uses the already-created Ubuntu `t3.micro`; it does not require CloudFormation or permission to create IAM roles. Keep the gateway public key set on the EC2 host in a root-readable `.env` file, and keep the JWT signing private key on your workstation. The gateway can verify tokens from `JWT_KEYS_JSON` without AWS access. In this mode, `POST /admin/v1/secrets/refresh` is unavailable because there is no instance role; update the public key set and recreate the gateway container to rotate keys.
+For the live dashboard demo, prefer a `t3.large` (or `t3.xlarge`, `c6i.large`, `c6i.xlarge`, `m6i.large`); the CloudFormation `InstanceType` parameter allows these and defaults to `t3.large`. The low-cost path below keeps working on a `t3.micro`. The review setup uses the already-created Ubuntu `t3.micro`; it does not require CloudFormation or permission to create IAM roles. Keep the gateway public key set on the EC2 host in a root-readable `.env` file, and keep the JWT signing private key on your workstation. The gateway can verify tokens from `JWT_KEYS_JSON` without AWS access. In this mode, `POST /admin/v1/secrets/refresh` is unavailable because there is no instance role; update the public key set and recreate the gateway container to rotate keys.
 
 On EC2, from the repository directory, refresh and start the stack:
 

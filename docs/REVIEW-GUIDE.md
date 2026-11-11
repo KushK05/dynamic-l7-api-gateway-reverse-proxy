@@ -1,6 +1,8 @@
 # Project Review Guide
 
-This guide is the full runbook for demonstrating the Dynamic L7 API Gateway on the current Ubuntu EC2 `t3.micro`. It includes setup, the live review sequence, expected results, likely reviewer questions, and a map of the important source files.
+This guide is the full runbook for demonstrating the Dynamic L7 API Gateway on EC2. The recommended host for the live dashboard demo is a `t3.large`; the current low-cost Ubuntu `t3.micro` still works for light traffic. It includes setup, the live review sequence, expected results, likely reviewer questions, and a map of the important source files.
+
+For a timed presenter script of the live dashboard (topology, traffic generator, header routing, canary, fault scenarios), see [DEMO-SCRIPT.md](DEMO-SCRIPT.md).
 
 ## What the project demonstrates
 
@@ -74,6 +76,23 @@ unset TOKEN
 ```
 
 Paste the token only into a hidden prompt when a script asks for it. Never put the token or signing private key into Git, evidence files, or the EC2 host.
+
+## Live dashboard and demo config
+
+`docker-compose.yml` mounts `config/demo.json` by default: the original catalog, checkout and secure routes plus `users` (auto weight), `orders`, `search`, header-routed `inventory` (`X-Region: eu`) with `inventory-default`, and a spare `catalog-v3` upstream for adding a route live. It starts eleven mock upstream containers with different latencies. Set `GATEWAY_CONFIG=./config/config.json` to use the original two-upstream config. Persisted config in the `gateway-data` volume wins over the bootstrap file, so run `docker compose down -v` to reset.
+
+The dashboard (`/dashboard` on the admin port, via the SSH tunnel) has live KPIs, an animated topology with click-to-inject faults, a Traffic control panel with a built-in load generator (`-load-max-rps`, default 3000; `LOADGEN_BEARER_TOKEN` supplies a valid JWT for protected routes), scenarios, an event feed, charts and a Routes editor. It uses these admin endpoints in addition to config and status:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /admin/v1/series?seconds=N` | Chart history |
+| `GET /admin/v1/events?since=SEQ` | Event feed |
+| `GET`, `PUT /admin/v1/load` | Load generator state and control |
+| `GET /admin/v1/upstreams` | Known upstreams, health and fault state |
+| `POST /admin/v1/upstreams/{id}/fault`, `POST /admin/v1/upstreams/{id}/reset` | Fault injection |
+| `GET /admin/v1/stream` | Server-sent events feed |
+
+Mutating admin calls need `Content-Type: application/json` (otherwise `415`). A `t3.micro` can run this with Steady traffic or lower; use a `t3.large` for Busy, Spike and Break it.
 
 ## Live review flow
 
@@ -242,6 +261,8 @@ The entire demo becomes unavailable because all components share one host. This 
 | File | What it does |
 |---|---|
 | `config/config.json` | Complete default configuration for catalog, checkout, and protected secure routes. Used to restore the baseline. |
+| `config/demo.json` | Compose default: superset of `config.json` with users, orders, search, inventory and inventory-default routes and many upstreams. |
+| `docs/DEMO-SCRIPT.md` | Timed presenter run sheet for the live dashboard demo. |
 | `config/catalog-100-0.json` | Full config with catalog traffic at 100% v1 and 0% v2; other routes remain present. |
 | `config/catalog-80-20.json` | Full config with an 80/20 catalog canary; other routes remain present. |
 | `docker-compose.yml` | Runs gateway and upstream containers, keeps admin on host loopback, and defines optional benchmark/fault tools. |

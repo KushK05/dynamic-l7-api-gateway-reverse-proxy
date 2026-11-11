@@ -2,17 +2,23 @@ services:
   # Public data plane and loopback-only admin plane share the same gateway process.
   gateway:
     build: .
-    command: ["-config", "/etc/gateway/config.json", "-state", "/data/config.json", "-data-addr", ":8080", "-admin-addr", ":9090"]
+    command: ["-config", "/etc/gateway/config.json", "-state", "/data/config.json", "-data-addr", ":8080", "-admin-addr", ":9090", "-load-max-rps", "${LOAD_MAX_RPS:-3000}"]
     environment:
       JWT_SECRET_ARN: ${JWT_SECRET_ARN:-}
       JWT_KEYS_JSON: ${JWT_KEYS_JSON:-}
       AWS_REGION: ${AWS_REGION:-us-east-1}
+      # Bearer token the dashboard load generator attaches to JWT-protected routes (optional).
+      LOADGEN_BEARER_TOKEN: ${LOADGEN_BEARER_TOKEN:-}
+      # Upstreams that accept dashboard fault injection even when no route uses them yet (catalog-v3).
+      KNOWN_UPSTREAMS: "v1=http://upstream-v1:9101,v2=http://upstream-v2:9102,catalog-v3=http://catalog-v3:9103,users-a=http://users-a:9104,users-b=http://users-b:9105,orders-a=http://orders-a:9106,orders-b=http://orders-b:9107,search-a=http://search-a:9108,search-b=http://search-b:9109,inventory-eu=http://inventory-eu:9110,inventory-us=http://inventory-us:9111"
     ports:
       # Host port overrides make local development possible beside other services.
       - "${GATEWAY_PORT:-8080}:8080"
       - "127.0.0.1:${ADMIN_PORT:-9090}:9090"
     volumes:
-      - ./config/config.json:/etc/gateway/config.json:ro
+      # Bootstrap config only: once /data/config.json exists in the gateway-data volume it wins.
+      # Run `docker compose down -v` to reset to this file; GATEWAY_CONFIG=./config/config.json selects the small config.
+      - ${GATEWAY_CONFIG:-./config/demo.json}:/etc/gateway/config.json:ro
       - gateway-data:/data
     restart: unless-stopped
     healthcheck:
@@ -25,6 +31,15 @@ services:
     depends_on:
       - upstream-v1
       - upstream-v2
+      - catalog-v3
+      - users-a
+      - users-b
+      - orders-a
+      - orders-b
+      - search-a
+      - search-b
+      - inventory-eu
+      - inventory-us
   # Separate target processes let fault tests stop either backend independently.
   upstream-v1:
     build: .
@@ -37,6 +52,61 @@ services:
     entrypoint: ["/usr/local/bin/upstream"]
     environment: {UPSTREAM_ID: v2, PORT: "9102"}
     expose: ["9102"]
+    restart: unless-stopped
+  # Demo upstreams: distinct base delay and jitter (ms) make latency differences visible in the dashboard.
+  catalog-v3:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: catalog-v3, PORT: "9103", SERVICE: catalog, BASE_DELAY_MS: "6", JITTER_MS: "4"}
+    expose: ["9103"]
+    restart: unless-stopped
+  users-a:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: users-a, PORT: "9104", SERVICE: users, BASE_DELAY_MS: "3", JITTER_MS: "2"}
+    expose: ["9104"]
+    restart: unless-stopped
+  users-b:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: users-b, PORT: "9105", SERVICE: users, BASE_DELAY_MS: "12", JITTER_MS: "6"}
+    expose: ["9105"]
+    restart: unless-stopped
+  orders-a:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: orders-a, PORT: "9106", SERVICE: orders, BASE_DELAY_MS: "8", JITTER_MS: "4"}
+    expose: ["9106"]
+    restart: unless-stopped
+  orders-b:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: orders-b, PORT: "9107", SERVICE: orders, BASE_DELAY_MS: "45", JITTER_MS: "15"}
+    expose: ["9107"]
+    restart: unless-stopped
+  search-a:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: search-a, PORT: "9108", SERVICE: search, BASE_DELAY_MS: "15", JITTER_MS: "8"}
+    expose: ["9108"]
+    restart: unless-stopped
+  search-b:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: search-b, PORT: "9109", SERVICE: search, BASE_DELAY_MS: "60", JITTER_MS: "20"}
+    expose: ["9109"]
+    restart: unless-stopped
+  inventory-eu:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: inventory-eu, PORT: "9110", SERVICE: inventory, BASE_DELAY_MS: "5", JITTER_MS: "3"}
+    expose: ["9110"]
+    restart: unless-stopped
+  inventory-us:
+    build: .
+    entrypoint: ["/usr/local/bin/upstream"]
+    environment: {UPSTREAM_ID: inventory-us, PORT: "9111", SERVICE: inventory, BASE_DELAY_MS: "25", JITTER_MS: "10"}
+    expose: ["9111"]
     restart: unless-stopped
   # Opt-in tools share the private Compose network and are not kept running by default.
   bench:

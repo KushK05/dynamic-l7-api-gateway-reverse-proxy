@@ -41,8 +41,11 @@ Client ----------------> Gateway -----------------> upstream-v1 :9101
 | `PUT /admin/v1/config` | JSON config plus required `If-Match`; returns new revision or rejects without activating |
 | `GET /admin/v1/status` | Route and secret revisions, upstream health/ejection, counters, and latency percentiles |
 | `POST /admin/v1/secrets/refresh` | Fetch and atomically activate current public verification keys |
+| `GET /admin/v1/series`, `GET /admin/v1/events`, `GET`/`PUT /admin/v1/load`, `GET /admin/v1/upstreams`, `POST /admin/v1/upstreams/{id}/fault`, `POST /admin/v1/upstreams/{id}/reset`, `GET /admin/v1/stream` | Live dashboard support: chart history, event feed, built-in load generator, fault injection and server-sent updates |
 | `GET /dashboard` | Dependency-free responsive dashboard with revision, latency, status, auth, retry, and health state |
 | Upstream `POST /admin/fault`, `/admin/reset` | Internal-only mock fault-control endpoints |
+
+Architecture note: the dashboard is a no-build embedded page (`internal/gateway/web/`) and adds a built-in load generator, an event log, per-second series, and an in-memory auto-weight overlay inside the gateway process. Config stays the single source of truth; auto weight never creates revisions. The live demo runs best on a `t3.large` with `config/demo.json`; `t3.micro` remains the low-cost option for light traffic.
 
 Admin plane has no application authentication in this one-instance academic setup; its exposure is limited to host loopback and an SSH tunnel. Never publish port 9090 or the mock upstream ports publicly.
 

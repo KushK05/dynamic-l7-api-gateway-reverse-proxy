@@ -38,6 +38,10 @@ check 'readiness' curl -fsS -o /dev/null "$BASE_URL/readyz"
 check 'metrics endpoint' curl -fsS -o /dev/null "$BASE_URL/metrics"
 check 'admin status' curl -fsS -o /dev/null "$ADMIN_URL/admin/v1/status"
 check 'dashboard serves HTML' bash -c 'html=$(curl -fsS "$1/dashboard") && [[ "$html" == *"Dynamic L7 Gateway"* ]]' _ "$ADMIN_URL"
+# New dashboard APIs and embedded assets (the dashboard loads main.js as an ES module).
+check 'admin load endpoint' curl -fsS -o /dev/null "$ADMIN_URL/admin/v1/load"
+check 'admin series endpoint' curl -fsS -o /dev/null "$ADMIN_URL/admin/v1/series"
+check 'dashboard main.js served' curl -fsS -o /dev/null "$ADMIN_URL/dashboard/js/main.js"
 check 'proxy forwards to upstream v1' bash -c 'curl -fsS -o /dev/null -D - "$1/api/catalog/items" | grep -qi "X-Upstream-Id: v1"' _ "$BASE_URL"
 if [[ $failures -ne 0 ]];then printf '\nFailures: %s\n' "$failures" | tee -a "$OUT";exit 1;fi
 printf '\nAll review smoke checks passed.\n' | tee -a "$OUT"
