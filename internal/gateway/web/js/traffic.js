@@ -362,10 +362,16 @@ class TrafficPanel {
       this.vals.concurrency = clamp(intOr(s.concurrency, 256), 1, 1024);
       this.vals.invalid = clamp(intOr(s.invalid_token_percent, 0), 0, 100);
       const mix = Array.isArray(s.mix) ? s.mix : [];
+      let missing = false;
       for (const id of this.routeIds) {
         const m = mix.find((x) => x.route === id);
-        this.vals.mix[id] = m ? clamp(intOr(m.weight, 0), 0, 100) : mix.length ? 0 : DEFAULT_MIX_WEIGHT;
+        this.vals.mix[id] = m ? clamp(intOr(m.weight, 0), 0, 100) : DEFAULT_MIX_WEIGHT;
+        // A route added after the mix was saved is absent from it; give it the default
+        // weight and push one write so the server generates traffic for it too.
+        if (!m && mix.length) missing = true;
       }
+      // After the write the server mix contains the route, so this cannot loop.
+      if (missing && !this.deb && !this.inflight) this.schedule();
       this.paintRps();
       this.paintSettings();
     } else {
