@@ -149,7 +149,7 @@ class TrafficPanel {
 
     this.mixList = el('div', { class: 'tp-mix-list' });
     this.mixEmpty = el('p', { class: 'tp-note', text: 'Waiting for routes...' });
-    const mix = el('details', { class: 'tp-mix', open: true }, el('summary', { class: 'tp-mix-sum' }, el('span', { text: 'Route mix' }), el('span', { class: 'tp-mix-sub', text: 'share of generated requests' })), this.mixList, this.mixEmpty);
+    const mix = el('details', { class: 'tp-mix' }, el('summary', { class: 'tp-mix-sum' }, el('span', { text: 'Route mix' }), el('span', { class: 'tp-mix-sub', text: 'share of generated requests' })), this.mixList, this.mixEmpty);
 
     this.scn = el('div', { class: 'tp-scn' });
     body.append(hero, this.sliderWrap, presets, this.rampBox, live, settings, mix, this.scn);
@@ -467,7 +467,7 @@ class TrafficPanel {
     const prev = wasRamp ? wasRamp.prev : this.vals.rps;
     this.cancelRamp(false);
     const total = kind === 'spike' ? SPIKE_RAMP_S + SPIKE_HOLD_S : BREAK_RAMP_S;
-    this.ramp = { kind, prev, n: 0, total, timer: 0 };
+    this.ramp = { kind, prev, n: 0, total, t0: Date.now(), timer: 0 };
     this.ramp.timer = setInterval(() => this.rampTick(), 1000);
     toast(kind === 'spike' ? `Spike: ramping to ${fmtNum(this.max)} rps, holding ${SPIKE_HOLD_S}s.` : `Break it: ramping to ${fmtNum(this.max)} rps over ${BREAK_RAMP_S}s. Watch latency and shed.`, 'info');
     this.rampTick();
@@ -476,7 +476,8 @@ class TrafficPanel {
   rampTick() {
     const r = this.ramp;
     if (!r) return;
-    r.n++;
+    // Wall-clock seconds, so a throttled or delayed timer cannot stretch the ramp.
+    r.n = Math.floor((Date.now() - r.t0) / 1000) + 1;
     const n = r.n;
     const span = r.kind === 'spike' ? SPIKE_RAMP_S : BREAK_RAMP_S;
     const frac = Math.min(1, n / span);
