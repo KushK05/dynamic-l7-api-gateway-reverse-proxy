@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Dynamic L7 Gateway</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1426'/%3E%3Cpath d='M7 16h6l4-7h8M13 16l4 7h8' stroke='%2322d3ee' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='7' cy='16' r='2.6' fill='%2322d3ee'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/dashboard/app.css">
+<script type="module" src="/dashboard/js/main.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" class="logo-bg"/>
+      <path d="M7 16h6l4-7h8M13 16l4 7h8" class="logo-path"/>
+      <circle cx="7" cy="16" r="2.6" class="logo-dot"/>
+      <circle cx="25" cy="9" r="2" class="logo-dot"/>
+      <circle cx="25" cy="23" r="2" class="logo-dot"/>
+    </svg>
+    <div class="brand-text">
+      <h1>Dynamic L7 Gateway</h1>
+      <p class="subtitle">Live control plane: routing, JWT auth and upstream health</p>
+    </div>
+  </div>
+  <div class="status-row">
+    <span id="conn" class="pill" data-state="connecting" role="status" aria-live="polite"><span class="pill-dot" aria-hidden="true"></span><span class="pill-label">CONNECTING</span></span>
+    <span id="chip-rev" class="chip"><span class="chip-k">Config</span><span class="chip-v num">-</span></span>
+    <span id="chip-secret" class="chip"><span class="chip-k">Secrets</span><span class="chip-v num">-</span></span>
+    <span id="chip-uptime" class="chip"><span class="chip-k">Uptime</span><span class="chip-v num">-</span></span>
+  </div>
+</header>
+
+<main class="page">
+  <section id="kpis" class="kpis" aria-label="Key indicators">
+    <article class="kpi kpi-rps" data-kpi="rps" data-state="idle">
+      <div class="kpi-head"><h2 class="kpi-label">Throughput</h2><span class="kpi-badge" hidden></span></div>
+      <div class="kpi-value num"><span class="v">-</span><span class="u">rps</span></div>
+      <div class="kpi-spark"></div>
+    </article>
+    <article class="kpi" data-kpi="success" data-state="idle">
+      <h2 class="kpi-label">Success rate</h2>
+      <div class="kpi-value num"><span class="v">-</span><span class="u u-tight">%</span></div>
+      <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">no traffic</span></div>
+    </article>
+    <article class="kpi kpi-latency" data-kpi="latency" data-state="idle">
+      <div class="kpi-head"><h2 class="kpi-label">Latency</h2><span class="kpi-badge" hidden></span></div>
+      <div class="kpi-trio">
+        <div class="kpi-q"><span class="kpi-qk">p50</span><span class="kpi-value num" data-q="p50"><span class="v">-</span><span class="u">ms</span></span></div>
+        <div class="kpi-q"><span class="kpi-qk">p95</span><span class="kpi-value num" data-q="p95"><span class="v">-</span><span class="u">ms</span></span></div>
+        <div class="kpi-q kpi-q-tail"><span class="kpi-qk">p99</span><span class="kpi-value num" data-q="p99"><span class="v">-</span><span class="u">ms</span></span></div>
+      </div>
+    </article>
+    <article class="kpi" data-kpi="errors" data-state="idle">
+      <h2 class="kpi-label">Errors 5xx</h2>
+      <div class="kpi-value num"><span class="v">-</span><span class="u">/s</span></div>
+      <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">no traffic</span></div>
+    </article>
+    <article class="kpi" data-kpi="inflight" data-state="idle">
+      <h2 class="kpi-label">In-flight</h2>
+      <div class="kpi-value num"><span class="v">-</span></div>
+      <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">in progress now</span></div>
+    </article>
+    <article class="kpi" data-kpi="jwt" data-state="idle">
+      <h2 class="kpi-label">JWT rejections</h2>
+      <div class="kpi-value num"><span class="v">-</span></div>
+      <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">total since start</span></div>
+    </article>
+    <article class="kpi" data-kpi="shed" data-state="idle">
+      <h2 class="kpi-label">Shed by generator</h2>
+      <div class="kpi-value num"><span class="v">-</span><span class="u">/s</span></div>
+      <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">-</span></div>
+    </article>
+  </section>
+
+  <section class="grid-main">
+    <article id="topology" class="panel panel-topology">
+      <header class="panel-head"><h2>Live topology</h2><span class="panel-sub">clients, gateway, routes and upstreams</span></header>
+      <div class="panel-body"><p class="placeholder">Topology view loads here.</p></div>
+    </article>
+    <div class="side">
+      <article id="traffic" class="panel panel-traffic">
+        <header class="panel-head"><h2>Traffic control</h2><span class="panel-sub">built-in load generator</span></header>
+        <div class="panel-body"><p class="placeholder">Traffic controls load here.</p></div>
+      </article>
+      <article id="events" class="panel panel-events">
+        <header class="panel-head"><h2>Event feed</h2><span class="panel-sub">config, health, faults and traffic</span></header>
+        <div class="panel-body"><p class="placeholder">Events appear here as they happen.</p></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="charts" aria-label="Charts, last two minutes">
+    <article id="chart-throughput" class="panel chart-card">
+      <header class="panel-head"><h2>Throughput</h2><span class="panel-sub">requests per second by status</span></header>
+      <div class="chart-body"></div>
+    </article>
+    <article id="chart-latency" class="panel chart-card">
+      <header class="panel-head"><h2>Latency</h2><span class="panel-sub">percentiles, log scale</span></header>
+      <div class="chart-body"></div>
+    </article>
+    <article id="chart-upstreams" class="panel chart-card">
+      <header class="panel-head"><h2>Upstream traffic</h2><span class="panel-sub">requests per second by upstream</span></header>
+      <div class="chart-body"></div>
+    </article>
+    <article id="chart-errors" class="panel chart-card">
+      <header class="panel-head"><h2>Error rate</h2><span class="panel-sub">share of requests</span></header>
+      <div class="chart-body"></div>
+    </article>
+  </section>
+
+  <article id="routes" class="panel panel-routes">
+    <header class="panel-head"><h2>Routes</h2><span class="panel-sub">active configuration</span></header>
+    <div class="panel-body"><p class="placeholder">Route editor loads here.</p></div>
+  </article>
+</main>
+<noscript><p class="noscript">This dashboard needs JavaScript enabled.</p></noscript>
+</body>
+</html>
