@@ -25,6 +25,10 @@ type Server struct {
 	weights *AutoWeigher
 	load    *LoadGen
 	logger  *slog.Logger
+	// known lists extra upstreams that may receive injected faults.
+	known []Upstream
+	// streamInterval paces SSE frames; zero means one second.
+	streamInterval time.Duration
 }
 
 // ServerDeps bundles the shared components a Server needs. Events, Weights and Load
@@ -38,10 +42,12 @@ type ServerDeps struct {
 	Weights *AutoWeigher
 	Load    *LoadGen
 	Logger  *slog.Logger
+	// KnownUpstreams are fault-eligible even when absent from the active config.
+	KnownUpstreams []Upstream
 }
 
 func NewServer(d ServerDeps) *Server {
-	return &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, load: d.Load, logger: d.Logger}
+	return &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, load: d.Load, logger: d.Logger, known: d.KnownUpstreams}
 }
 func (s *Server) Run(ctx context.Context, dataAddr, adminAddr string) error {
 	// Keep proxy traffic and administrative controls on separate listeners so
@@ -63,6 +69,7 @@ func (s *Server) Run(ctx context.Context, dataAddr, adminAddr string) error {
 	adminMux.HandleFunc("/admin/v1/config", s.configEndpoint)
 	adminMux.HandleFunc("/admin/v1/status", s.statusEndpoint)
 	adminMux.HandleFunc("/admin/v1/secrets/refresh", s.refreshEndpoint)
+	s.registerAdmin(adminMux)
 	adminMux.HandleFunc("/dashboard", s.dashboard)
 	adminMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	data := &http.Server{Addr: dataAddr, Handler: dataMux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 << 10}
@@ -92,6 +99,9 @@ func (s *Server) configEndpoint(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", fmt.Sprintf("\"%d\"", p.Revision))
 		jsonResponse(w, 200, map[string]any{"revision": p.Revision, "config": p.Config})
 	case http.MethodPut:
+		if !requireJSON(w, r) {
+			return
+		}
 		// If-Match makes each update conditional on the revision the client read.
 		expected, e := strconv.ParseInt(strings.Trim(r.Header.Get("If-Match"), "\""), 10, 64)
 		if e != nil {
@@ -130,11 +140,13 @@ func (s *Server) configEndpoint(w http.ResponseWriter, r *http.Request) {
 func (s *Server) statusEndpoint(w http.ResponseWriter, r *http.Request) {
 	// Combine config, key, health, and traffic snapshots for one dashboard poll.
 	p := s.configs.Store().Load()
-	keyRev := "unavailable"
+	jsonResponse(w, 200, map[string]any{"revision": p.Revision, "secret_revision": s.secretRevision(), "upstreams": s.health.Snapshot(), "metrics": s.metrics.snapshot(), "weights": s.weights.Weights()})
+}
+func (s *Server) secretRevision() string {
 	if k := s.keys.Current(); k != nil {
-		keyRev = k.Set.Revision
+		return k.Set.Revision
 	}
-	jsonResponse(w, 200, map[string]any{"revision": p.Revision, "secret_revision": keyRev, "upstreams": s.health.Snapshot(), "metrics": s.metrics.snapshot(), "weights": s.weights.Weights()})
+	return "unavailable"
 }
 func (s *Server) refreshEndpoint(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

@@ -19,8 +19,11 @@ func main() {
 	adminAddr := flag.String("admin-addr", ":9090", "private admin-plane listen address")
 	statePath := flag.String("state", "/data/config.json", "durable active configuration path")
 	loadMaxRPS := flag.Int("load-max-rps", 3000, "maximum requests per second the built-in load generator may produce")
+	knownFlag := flag.String("known-upstreams", os.Getenv("KNOWN_UPSTREAMS"), "extra fault-eligible upstreams as id=url,id=url")
 	flag.Parse()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	known, err := gateway.ParseKnownUpstreams(*knownFlag)
+	fatal(logger, err)
 	// Validate the shipped bootstrap config even when durable state already exists;
 	// this catches a broken deployment artifact before either listener starts.
 	initial, err := gateway.LoadConfig(*configPath)
@@ -75,7 +78,7 @@ func main() {
 			}
 		}()
 	}
-	server := gateway.NewServer(gateway.ServerDeps{Configs: configs, Keys: keys, Health: health, Metrics: metrics, Events: events, Weights: weigher, Load: loadgen, Logger: logger})
+	server := gateway.NewServer(gateway.ServerDeps{Configs: configs, Keys: keys, Health: health, Metrics: metrics, Events: events, Weights: weigher, Load: loadgen, Logger: logger, KnownUpstreams: known})
 	if err = server.Run(ctx, *dataAddr, *adminAddr); err != nil {
 		fatal(logger, err)
 	}

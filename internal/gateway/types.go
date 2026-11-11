@@ -112,8 +112,7 @@ func Validate(c Config) error {
 				return fmt.Errorf("route %s upstream IDs must be safe, non-empty, and unique", r.ID)
 			}
 			uids[u.ID] = true
-			parsed, e := url.Parse(u.URL)
-			if e != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			if !validUpstreamURL(u.URL) {
 				return fmt.Errorf("route %s upstream %s has invalid URL", r.ID, u.ID)
 			}
 			if previous, ok := upstreamURLs[u.ID]; ok && previous != u.URL {
@@ -131,6 +130,12 @@ func Validate(c Config) error {
 		}
 	}
 	return nil
+}
+
+// validUpstreamURL accepts plain http(s) base URLs without credentials, query or fragment.
+func validUpstreamURL(raw string) bool {
+	parsed, e := url.Parse(raw)
+	return e == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 func hasNonIdempotent(ms []string) bool {
 	// The runtime only implements retries for GET and HEAD; keep validation stricter

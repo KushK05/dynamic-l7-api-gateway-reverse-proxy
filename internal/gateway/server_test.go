@@ -18,6 +18,7 @@ func TestConfigPutRejectionsEmitWarnEvents(t *testing.T) {
 	s := NewServer(ServerDeps{Configs: cs, Metrics: NewMetrics(), Events: ev})
 	put := func(ifMatch, body string) int {
 		req := httptest.NewRequest(http.MethodPut, "/admin/v1/config", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
 		if ifMatch != "" {
 			req.Header.Set("If-Match", ifMatch)
 		}
