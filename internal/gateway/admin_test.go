@@ -209,7 +209,7 @@ func TestFaultForwardAndReset(t *testing.T) {
 		t.Fatalf("event %+v", ev)
 	}
 	e.do("POST", "/admin/v1/upstreams/v1/fault", "application/json", `{"delay_ms":0,"status":0,"unhealthy":true,"error_rate_percent":30}`)
-	if ev := e.events.Recent(1)[0]; ev.Message != "Injected 30% errors into v1; v1 set to fail health checks and return 503" {
+	if ev := e.events.Recent(1)[0]; ev.Message != "Injected 30% errors into v1; v1 set to fail health checks" {
 		t.Fatalf("event %+v", ev)
 	}
 	if w = e.do("POST", "/admin/v1/upstreams/v1/reset", "", ""); w.Code != 415 {

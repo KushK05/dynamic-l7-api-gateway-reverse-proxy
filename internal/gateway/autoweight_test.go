@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -232,9 +233,9 @@ func TestProxyRetryUsesEffectiveWeights(t *testing.T) {
 }
 
 func TestProxyRoutesToConfiguredZeroUpstreamWhenAutoWeightPositive(t *testing.T) {
-	hit := ""
+	var hit atomic.Value
 	mk := func(id string) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hit = id }))
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hit.Store(id) }))
 	}
 	u1, u2 := mk("v1"), mk("v2")
 	defer u1.Close()
@@ -252,8 +253,8 @@ func TestProxyRoutesToConfiguredZeroUpstreamWhenAutoWeightPositive(t *testing.T)
 	p.weights = r.a
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, httptest.NewRequest("GET", "http://gateway/api/catalog/x", nil))
-	if w.Code != 200 || hit != "v2" {
-		t.Fatalf("code %d hit %q", w.Code, hit)
+	if w.Code != 200 || hit.Load() != "v2" {
+		t.Fatalf("code %d hit %v", w.Code, hit.Load())
 	}
 	// Without the weigher, the configured 0 weight leaves nothing eligible.
 	p.weights = nil

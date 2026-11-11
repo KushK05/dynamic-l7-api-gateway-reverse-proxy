@@ -252,7 +252,11 @@ func (f faultSettings) summary(id string) (string, string) {
 		parts = append(parts, "Injected "+strings.Join(injected, " and ")+" into "+id)
 	}
 	if f.Unhealthy {
-		parts = append(parts, id+" set to fail health checks and return 503")
+		msg := id + " set to fail health checks"
+		if f.Status != 0 {
+			msg += fmt.Sprintf(" and return %d", f.Status)
+		}
+		parts = append(parts, msg)
 	}
 	if len(parts) == 0 {
 		return "success", "Faults cleared on " + id

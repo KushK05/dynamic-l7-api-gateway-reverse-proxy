@@ -101,8 +101,12 @@ func TestHealthEmitsOneEventPerTransition(t *testing.T) {
 	if n := len(ev.Recent(10)); n != 1 {
 		t.Fatalf("cooldown probe must not emit, got %d", n)
 	}
-	time.Sleep(40 * time.Millisecond)
-	h.Check("v2", up.URL)
+	// Probe until the cooldown has elapsed and recovery is reported, rather than
+	// betting on a fixed sleep; extra healthy probes emit nothing.
+	for deadline := time.Now().Add(5 * time.Second); len(ev.Recent(10)) < 2 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+		h.Check("v2", up.URL)
+	}
 	h.Check("v2", up.URL)
 	got = ev.Recent(10)
 	if len(got) != 2 || got[1].Level != "success" || got[1].Message != "Upstream v2 recovered" {
