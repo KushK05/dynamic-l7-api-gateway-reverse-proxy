@@ -160,3 +160,24 @@ sudo docker compose down --volumes
 ```
 
 Then stop or terminate the instance from the EC2 console. The current student-account setup has no CloudFormation stack or attached Secrets Manager role to delete. Keep the signing private key only on your workstation.
+
+## Demo tools and EC2 handoff
+
+The dashboard includes a same-origin **Request playground**, a bounded **Recent
+requests** log (200 completed proxy requests, newest first, route/status filters,
+pause viewing), and **Configuration history** (last ten successful revisions,
+comparison and restore as a new validated revision). All original controls remain.
+
+New endpoints: `POST /admin/v1/playground` (JSON), `GET /admin/v1/requests`, and
+`GET /admin/v1/history`. Playground requests execute the real proxy handler and
+count in metrics; they accept relative gateway paths, a method, match host, optional
+headers, bearer token and body. They cannot choose arbitrary destination URLs.
+Response capture is capped at 64 KiB and execution at five seconds. The request
+log stores time, method, route, upstream, status, latency, revision and a bounded
+request ID; it excludes paths, query strings, headers and bodies. Request IDs should
+never contain secrets. Request logs clear on restart; configuration history shares
+the active configuration's existing persistent volume and atomic writes.
+
+See [EC2-HANDOFF.md](docs/EC2-HANDOFF.md) for update commands, SSH tunnel setup,
+rehearsal checks, persistence verification and recovery. The admin interface remains
+private and unauthenticated; continue accessing it through loopback/SSH.

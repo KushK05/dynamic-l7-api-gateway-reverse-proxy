@@ -16,14 +16,16 @@ import (
 
 // Server owns the two HTTP surfaces while the gateway components are shared.
 type Server struct {
-	configs *ConfigStore
-	keys    *KeyManager
-	health  *Health
-	metrics *Metrics
-	events  *EventLog
-	weights *AutoWeigher
-	load    *LoadGen
-	logger  *slog.Logger
+	configs  *ConfigStore
+	keys     *KeyManager
+	health   *Health
+	metrics  *Metrics
+	events   *EventLog
+	weights  *AutoWeigher
+	load     *LoadGen
+	logger   *slog.Logger
+	requests *RequestLog
+	proxy    *Proxy
 	// known lists extra upstreams that may receive injected faults.
 	known []Upstream
 	// streamInterval paces SSE frames; zero means one second.
@@ -46,14 +48,20 @@ type ServerDeps struct {
 }
 
 func NewServer(d ServerDeps) *Server {
-	return &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, load: d.Load, logger: d.Logger, known: d.KnownUpstreams}
+	if d.Logger == nil {
+		d.Logger = slog.Default()
+	}
+	s := &Server{configs: d.Configs, keys: d.Keys, health: d.Health, metrics: d.Metrics, events: d.Events, weights: d.Weights, load: d.Load, logger: d.Logger, known: d.KnownUpstreams}
+	s.requests = &RequestLog{}
+	s.proxy = NewProxy(d.Configs.Store(), d.Keys, d.Health, d.Metrics, d.Logger)
+	s.proxy.weights, s.proxy.requests = d.Weights, s.requests
+	return s
 }
 func (s *Server) Run(ctx context.Context, dataAddr, adminAddr string) error {
 	// Keep proxy traffic and administrative controls on separate listeners so
 	// Compose/AWS can expose only the data plane to clients.
 	dataMux := http.NewServeMux()
-	proxy := NewProxy(s.configs.Store(), s.keys, s.health, s.metrics, s.logger)
-	proxy.weights = s.weights
+	proxy := s.proxy
 	dataMux.Handle("/", proxy)
 	dataMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	dataMux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {

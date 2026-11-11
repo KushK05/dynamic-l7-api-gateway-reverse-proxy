@@ -6,7 +6,11 @@
 *.key
 *.secret.json
 *.jwt
+# Local environment files can contain credentials; only examples may be committed.
 .env
+.env.*
+!.env.example
+.aws/
 .DS_Store
 __pycache__/
 *.py[cod]

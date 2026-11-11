@@ -16,6 +16,7 @@ type ConfigStore struct {
 	path      string
 	store     *Store
 	auditPath string
+	history   []ConfigRevision
 }
 type Audit struct {
 	Timestamp   time.Time `json:"timestamp"`
@@ -24,9 +25,16 @@ type Audit struct {
 	Outcome     string    `json:"outcome"`
 	Error       string    `json:"error,omitempty"`
 }
-type persistedConfig struct {
+
+// ConfigRevision is a retained successful configuration; the last ten include active.
+type ConfigRevision struct {
 	Revision int64  `json:"revision"`
 	Config   Config `json:"config"`
+}
+type persistedConfig struct {
+	Revision int64            `json:"revision"`
+	Config   Config           `json:"config"`
+	History  []ConfigRevision `json:"history,omitempty"`
 }
 
 func OpenConfigStore(path string, initial Config) (*ConfigStore, error) {
@@ -53,8 +61,9 @@ func OpenConfigStore(path string, initial Config) (*ConfigStore, error) {
 		return nil, err
 	}
 	var disk struct {
-		Revision int64   `json:"revision"`
-		Config   *Config `json:"config"`
+		Revision int64            `json:"revision"`
+		Config   *Config          `json:"config"`
+		History  []ConfigRevision `json:"history"`
 	}
 	if err = json.Unmarshal(data, &disk); err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
@@ -73,6 +82,19 @@ func OpenConfigStore(path string, initial Config) (*ConfigStore, error) {
 	}
 	if err = Validate(c); err != nil {
 		return nil, fmt.Errorf("invalid persisted config: %w", err)
+	}
+	cs.history = disk.History
+
+	// Active is authoritative, including when opening an older envelope without history.
+	kept := []ConfigRevision{}
+	for _, h := range cs.history {
+		if h.Revision < rev {
+			kept = append(kept, h)
+		}
+	}
+	cs.history = append(kept, ConfigRevision{rev, c})
+	if len(cs.history) > 10 {
+		cs.history = cs.history[len(cs.history)-10:]
 	}
 	cs.store.Activate(c, rev)
 	return cs, nil
@@ -96,7 +118,20 @@ func (cs *ConfigStore) Replace(c Config, expected int64) (Audit, error) {
 		_ = cs.appendAudit(a)
 		return a, err
 	}
-	data, err := json.MarshalIndent(persistedConfig{Revision: old.Revision + 1, Config: c}, "", "  ")
+	// Detach input slices/maps from callers before retaining an immutable revision.
+	cloned, cloneErr := json.Marshal(c)
+	if cloneErr != nil {
+		return a, cloneErr
+	}
+	c = Config{}
+	if cloneErr = json.Unmarshal(cloned, &c); cloneErr != nil {
+		return a, cloneErr
+	}
+	history := append(append([]ConfigRevision{}, cs.history...), ConfigRevision{old.Revision + 1, c})
+	if len(history) > 10 {
+		history = history[len(history)-10:]
+	}
+	data, err := json.MarshalIndent(persistedConfig{Revision: old.Revision + 1, Config: c, History: history}, "", "  ")
 	if err != nil {
 		a.Error = err.Error()
 		_ = cs.appendAudit(a)
@@ -111,6 +146,7 @@ func (cs *ConfigStore) Replace(c Config, expected int64) (Audit, error) {
 	a.Outcome = "accepted"
 	// Publish only after durable storage succeeds, so readers never observe an
 	// update that would be lost if the process crashed immediately afterward.
+	cs.history = history
 	cs.store.Activate(c, a.NewRevision)
 	_ = cs.appendAudit(a)
 	return a, nil
@@ -165,4 +201,14 @@ func atomicWrite(path string, data []byte) error {
 		e = d.Sync()
 	}
 	return e
+}
+
+// History returns a deep copy so API readers cannot mutate retained snapshots.
+func (cs *ConfigStore) History() []ConfigRevision {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	b, _ := json.Marshal(cs.history)
+	var out []ConfigRevision
+	_ = json.Unmarshal(b, &out)
+	return out
 }
