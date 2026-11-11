@@ -25,6 +25,7 @@ type Proxy struct {
 	clockSkew time.Duration
 	transport *http.Transport
 	weights   *AutoWeigher
+	requests  *RequestLog
 }
 
 func NewProxy(s *Store, k *KeyManager, h *Health, m *Metrics, l *slog.Logger) *Proxy {
@@ -50,6 +51,30 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Request-ID", id)
 	var route *Route
+	servedID := ""
+	var attempt *retryTransport
+	// Record only gateway metadata, never paths, query strings, tokens or bodies.
+	defer func() {
+		if p.requests == nil {
+			return
+		}
+		routeID := ""
+		if route != nil {
+			routeID = route.ID
+		}
+		if attempt != nil && attempt.served != "" {
+			servedID = attempt.served
+		}
+		status := capture.status
+		if status == 0 {
+			status = 200
+		}
+		entry := RequestEntry{Time: time.Now().UTC(), Method: r.Method, RequestID: id, Route: routeID, Upstream: servedID, Status: status, DurationMS: float64(time.Since(start).Microseconds()) / 1000, Revision: snap.Revision}
+		p.requests.Add(entry)
+		if preview, ok := r.Context().Value(previewEntryKey{}).(*RequestEntry); ok {
+			*preview = entry
+		}
+	}()
 	host := r.Host
 	if h, _, e := net.SplitHostPort(host); e == nil {
 		host = h
@@ -84,6 +109,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.metrics.observe(snap.Revision, route.ID, "", 503, time.Since(start), requestBytes(r), capture.bytes)
 		return
 	}
+	servedID = up.ID
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(route.TimeoutMS)*time.Millisecond)
 	defer cancel()
 	target, e := url.Parse(up.URL)
@@ -114,6 +140,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Flush streaming responses immediately rather than buffering them in the proxy.
 	proxy.FlushInterval = -1
 	rt := &retryTransport{base: p.transport, route: *route, first: up, proxy: p, seed: id}
+	attempt = rt
 	proxy.Transport = rt
 	// Keep the gateway-generated ID authoritative. Upstreams receive it on the
 	// request, but their response copy is discarded to avoid duplicate headers.

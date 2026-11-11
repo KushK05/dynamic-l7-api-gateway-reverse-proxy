@@ -1,3 +1,4 @@
+import { initDemo } from './demo.js';
 // Dashboard entry point: boots the live store and renders the top bar, KPI
 // strip and charts. Later panels (topology, routes, traffic, events) plug in
 // below with their own init calls; nothing is exposed globally.
@@ -257,4 +258,5 @@ initRoutes($('routes'), store);
 const traffic = initTraffic($('traffic'), store);
 initScenarios(traffic.scenarios, store);
 initEvents($('events'), store, charts);
+initDemo(store);
 store.start();

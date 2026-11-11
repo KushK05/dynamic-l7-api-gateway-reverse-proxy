@@ -33,6 +33,9 @@
 </header>
 
 <main class="page">
+  <nav class="demo-nav" aria-label="Dashboard sections">
+    <a href="#topology">Overview</a><a href="#traffic">Traffic & faults</a><a href="#routes">Routes</a><a href="#playground">Playground</a><a href="#config-history">History</a><a href="#request-log">Request log</a>
+  </nav>
   <section id="kpis" class="kpis" aria-label="Key indicators">
     <article class="kpi kpi-rps" data-kpi="rps" data-state="idle">
       <div class="kpi-head"><h2 class="kpi-label">Throughput</h2><span class="kpi-badge" hidden></span></div>
@@ -45,7 +48,7 @@
       <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">no traffic</span></div>
     </article>
     <article class="kpi kpi-latency" data-kpi="latency" data-state="idle">
-      <div class="kpi-head"><h2 class="kpi-label">Latency</h2><span class="kpi-badge" hidden></span></div>
+      <div class="kpi-head"><h2 class="kpi-label" title="Estimated response times: 50%, 95% and 99% of requests complete within p50, p95 and p99 respectively.">Latency</h2><span class="kpi-badge" hidden></span></div>
       <div class="kpi-trio">
         <div class="kpi-q"><span class="kpi-qk">p50</span><span class="kpi-value num" data-q="p50"><span class="v">-</span><span class="u">ms</span></span></div>
         <div class="kpi-q"><span class="kpi-qk">p95</span><span class="kpi-value num" data-q="p95"><span class="v">-</span><span class="u">ms</span></span></div>
@@ -68,7 +71,7 @@
       <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">total since start</span></div>
     </article>
     <article class="kpi" data-kpi="shed" data-state="idle">
-      <h2 class="kpi-label">Shed by generator</h2>
+      <h2 class="kpi-label" title="Traffic the generator could not send because its concurrency capacity was full; these are not gateway rejections.">Shed by generator</h2>
       <div class="kpi-value num"><span class="v">-</span><span class="u">/s</span></div>
       <div class="kpi-foot"><span class="kpi-badge" hidden></span><span class="kpi-note">-</span></div>
     </article>
@@ -114,6 +117,12 @@
     <header class="panel-head"><h2>Routes</h2><span class="panel-sub">active configuration</span></header>
     <div class="panel-body"><p class="placeholder">Route editor loads here.</p></div>
   </article>
+  <p class="demo-note">Configured weights are saved; effective auto weights adapt at runtime. Canary runs in this browser tab: keep it open until completion or rollback.</p>
+  <section class="demo-grid" aria-label="Request tools">
+    <article id="playground" class="panel"><header class="panel-head"><h2>Request playground</h2><span class="panel-sub">test the gateway</span></header><div class="panel-body"></div></article>
+    <article id="config-history" class="panel"><header class="panel-head"><h2>Configuration history</h2><span class="panel-sub">compare and restore</span></header><div class="panel-body"></div></article>
+  </section>
+  <article id="request-log" class="panel"><header class="panel-head"><h2>Recent requests</h2><span class="panel-sub">last 200 completed proxy requests</span></header><div class="panel-body"></div></article>
 </main>
 <noscript><p class="noscript">This dashboard needs JavaScript enabled.</p></noscript>
 </body>

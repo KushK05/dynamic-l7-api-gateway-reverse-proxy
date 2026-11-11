@@ -53,7 +53,7 @@ class Scenarios {
       canary: this.button('canary', 'Canary rollout', this.canaryDesc, () => this.canary()),
       slow: this.button('slow', 'Slow upstream', `+${SLOW_MS} ms`, () => this.fault({ delay_ms: SLOW_MS, status: 0, unhealthy: false, error_rate_percent: 0 }, (id) => `Slow upstream: ${SLOW_MS} ms added to ${id}`)),
       flaky: this.button('flaky', 'Flaky upstream', `${FLAKY_PERCENT}% errors`, () => this.fault({ delay_ms: 0, status: 0, unhealthy: false, error_rate_percent: FLAKY_PERCENT }, (id) => `Flaky upstream: ${FLAKY_PERCENT}% errors on ${id}`)),
-      kill: this.button('kill', 'Kill upstream', `unhealthy, ${KILL_STATUS}`, () => this.fault({ delay_ms: 0, status: KILL_STATUS, unhealthy: true, error_rate_percent: 0 }, (id) => `Killed upstream ${id}`)),
+      kill: this.button('kill', 'Simulate failure', `unhealthy, ${KILL_STATUS}`, () => this.fault({ delay_ms: 0, status: KILL_STATUS, unhealthy: true, error_rate_percent: 0 }, (id) => `Simulated failure on ${id}`)),
       reset: this.button('reset', 'Reset all faults', 'clear every upstream', () => this.resetAll()),
     };
     this.root.replaceChildren(head, el('div', { class: 'sc-grid' }, ...Object.values(this.buttons)));
