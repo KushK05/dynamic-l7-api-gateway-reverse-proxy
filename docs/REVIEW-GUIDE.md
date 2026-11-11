@@ -39,13 +39,13 @@ curl -s -o /dev/null -w 'Protected route without token: HTTP %{http_code}\n' \
 scripts/review-smoke.sh
 ```
 
-Expected results are `{"status":"ok"}` and `HTTP 401`. A `404` on the protected URL means the active persisted config is missing the secure route. Restore the checked-in full config before the review:
+Expected results are `{"status":"ok"}` and `HTTP 401`. A `404` on the protected URL means the active persisted config is missing the secure route. Restore the default demo config (`config/demo.json`, the superset of the three review routes) before the review:
 
 ```sh
 REV="$(curl -fsS http://127.0.0.1:9090/admin/v1/config | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')"
 curl -fsS -X PUT http://127.0.0.1:9090/admin/v1/config \
   -H "If-Match: \"$REV\"" -H 'Content-Type: application/json' \
-  --data-binary @config/config.json
+  --data-binary @config/demo.json
 ```
 
 ### 3. Open the dashboard through SSH
@@ -75,7 +75,7 @@ printf '%s' "$TOKEN" | pbcopy
 unset TOKEN
 ```
 
-Paste the token only into a hidden prompt when a script asks for it. Never put the token or signing private key into Git, evidence files, or the EC2 host.
+Paste the token only into a hidden prompt when a script asks for it. Never put the token or signing private key into Git or evidence files, and never put the signing private key on the EC2 host. The one exception is the optional dashboard demo, where a short-lived generator-only token may go in the host's root-readable `.env` as `LOADGEN_BEARER_TOKEN` (see [DEMO-SCRIPT.md](DEMO-SCRIPT.md)); remove it afterwards.
 
 ## Live dashboard and demo config
 
@@ -260,18 +260,18 @@ The entire demo becomes unavailable because all components share one host. This 
 
 | File | What it does |
 |---|---|
-| `config/config.json` | Complete default configuration for catalog, checkout, and protected secure routes. Used to restore the baseline. |
+| `config/config.json` | Three-route configuration (catalog, checkout, protected secure) used for local development without the demo routes. |
 | `config/demo.json` | Compose default: superset of `config.json` with users, orders, search, inventory and inventory-default routes and many upstreams. |
 | `docs/DEMO-SCRIPT.md` | Timed presenter run sheet for the live dashboard demo. |
-| `config/catalog-100-0.json` | Full config with catalog traffic at 100% v1 and 0% v2; other routes remain present. |
-| `config/catalog-80-20.json` | Full config with an 80/20 catalog canary; other routes remain present. |
+| `config/catalog-100-0.json` | Three-route config with catalog traffic at 100% v1 and 0% v2. Replaces the whole config, so it drops the demo routes. |
+| `config/catalog-80-20.json` | Three-route config with an 80/20 catalog canary. Replaces the whole config, so it drops the demo routes. |
 | `docker-compose.yml` | Runs gateway and upstream containers, keeps admin on host loopback, and defines optional benchmark/fault tools. |
 | `Dockerfile` | Builds the Go executables for the target architecture and packages them into the runtime image. |
 | `scripts/review-smoke.sh` | Checks the essential health, dashboard, metrics, admin, and proxy endpoints and writes a timestamped report. |
 | `scripts/e2e-tests.sh` | Exercises JWT responses, canary distribution, valid/invalid/stale reloads under load, and upstream failure/recovery. |
 | `scripts/fault-demo.sh` | Runs visible low-rate traffic while injecting latency, failed health probes, and complete v2 process loss, then restores state. |
 | `scripts/benchmark-matrix.sh` | Runs direct, proxy, JWT, and concurrent-reload benchmarks using the small-host defaults or a larger-host profile. |
-| `scripts/reload-loop.sh` | Alternates the two catalog config files until stopped to create concurrent reload traffic. |
+| `scripts/reload-loop.sh` | Toggles only the catalog route's canary weights on the live config until stopped to create concurrent reload traffic, then restores the starting config on exit. |
 | `scripts/summarize-benchmarks.py` | Reads primary benchmark JSON files and writes a grouped Markdown report plus p95 comparison. |
 | `scripts/lib/docker.sh` | Lets operational scripts use Docker directly or fall back to `sudo docker` on Ubuntu. |
 | `deployment/cloudformation.yaml` | Optional automated EC2 and IAM-role deployment template. The current student-account deployment was created manually because role creation is not allowed. |
