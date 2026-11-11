@@ -6,22 +6,24 @@ This is the presenter script for the live dashboard. Each beat lists what to cli
 
 Recommended host: EC2 `t3.large` (2 vCPU, 8 GiB). It runs the gateway plus 11 mock upstream containers (always started, sharing one image built once) and the built-in load generator comfortably. A `t3.micro` still works for light traffic (use Steady or lower, not Busy or Break it).
 
-1. Start the stack with the demo config (`config/demo.json` is the Compose default). To get the valid-token JWT beats, pass a token for the load generator:
+1. Start the stack with the demo config (`config/demo.json` is the Compose default). SSH to the host as `ubuntu` (the existing review host) or `ec2-user` (a CloudFormation stack host). The gateway keys already live in the root-readable `.env` that the README deployment section creates. To get the valid-token JWT beats, append a short-lived generator token to that same file:
 
    ```sh
    # on your workstation: mint a token (see README "Configure a local JWT key set")
-   TOKEN="$(go run ./cmd/jwtgen token -private "$HOME/.config/dynamic-l7/review-signing-private.pem" \
-     -kid review-1 -issuer dynamic-l7-review -audience dynamic-l7-gateway)"
-   # on the host, in the repo directory
-   docker compose down -v          # start from a clean persisted config
-   JWT_KEYS_JSON="$(cat jwt-keys.secret.json)" LOADGEN_BEARER_TOKEN="$TOKEN" docker compose up --build -d
+   go run ./cmd/jwtgen token -private "$HOME/.config/dynamic-l7/review-signing-private.pem" \
+     -kid review-1 -issuer dynamic-l7-review -audience dynamic-l7-gateway
+   # on the host, in the repo directory (paste the token in place of the placeholder)
+   printf 'LOADGEN_BEARER_TOKEN=%s\n' '<short-lived token>' | sudo tee -a .env >/dev/null
+   sudo docker compose down -v          # start from a clean persisted config
+   sudo docker compose up --build -d
    ```
 
-   Persisted state in the `gateway-data` volume overrides the bootstrap config, so always run `docker compose down -v` before a fresh demo. Tokens are short-lived: mint a new one right before presenting.
+   Compose reads `.env` even under `sudo`, so the token reaches the load generator. Putting a generator-only token on the host is acceptable for the demo because it expires within minutes, only verifies against the public key set, and cannot mint other tokens; the signing private key never leaves your workstation. Delete the `LOADGEN_BEARER_TOKEN` line from `.env` after the demo. Persisted state in the `gateway-data` volume overrides the bootstrap config, so always run `docker compose down -v` before a fresh demo. Mint a new token right before presenting.
 2. Open the SSH tunnel from your laptop and browse to the dashboard:
 
    ```sh
-   ssh -i <key.pem> -L 9090:127.0.0.1:9090 ec2-user@<EC2_DNS>
+   # ubuntu for the existing review host, ec2-user for the CloudFormation stack
+   ssh -i <key.pem> -L 9090:127.0.0.1:9090 ubuntu@<EC2_DNS>
    open http://localhost:9090/dashboard
    ```
 
@@ -86,7 +88,7 @@ curl -si "$GW/api/secure/profile" | head -1                                   # 
 curl -si -H "Authorization: Bearer $TOKEN" "$GW/api/secure/profile" | head -1  # 200
 ```
 
-Then raise Invalid JWT in Traffic control to about 20 percent. Say: "The generator sends a bad token for that share of requests." Watch the JWT rejections KPI climb and 401s appear in the Throughput chart. Set it back to 0. Without `LOADGEN_BEARER_TOKEN`, JWT routes see only invalid tokens, so this beat still works.
+Then raise Invalid JWT in Traffic control to about 20 percent. Say: "The generator sends a bad token for that share of requests." Watch the JWT rejections KPI climb and 401s appear in the Throughput chart. Set it back to 0. The JWT rejections KPI climbs whenever the generator hits a JWT route, with or without a token; the Invalid JWT slider only matters when `LOADGEN_BEARER_TOKEN` is configured, because without it no Authorization header is sent at all.
 
 ### 8. Slow upstream and auto weight (8:30 - 9:30)
 
