@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -178,6 +179,9 @@ func TestAutoWeightDropsStateOnUpstreamSetChange(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		r.a.tick()
 	}
+	if st := r.a.state["catalog"]; st == nil || st.last["v1"] == 100 {
+		t.Fatalf("precondition: expected smoothed (non-configured) state, got %+v", st)
+	}
 	c := autoConfig(true, 100, 0)
 	c.Routes[0].Upstreams = c.Routes[0].Upstreams[:1]
 	r.store.Activate(c, 2)
@@ -185,8 +189,45 @@ func TestAutoWeightDropsStateOnUpstreamSetChange(t *testing.T) {
 		t.Fatalf("stale effective weights leaked into new config: %v", w)
 	}
 	r.a.tick()
-	if len(r.a.state) != 1 {
-		t.Fatalf("state: %+v", r.a.state)
+	st := r.a.state["catalog"]
+	if st == nil || len(st.ids) != 1 || st.ids[0] != "v1" || len(st.last) != 1 || st.last["v1"] != 100 {
+		t.Fatalf("state should be re-seeded for the new upstream set: %+v", st)
+	}
+	// A route that disappears from the config loses its state.
+	c2 := autoConfig(true, 50, 50)
+	c2.Routes[0].ID = "other"
+	r.store.Activate(c2, 3)
+	r.a.tick()
+	if _, ok := r.a.state["catalog"]; ok || r.a.state["other"] == nil {
+		t.Fatalf("removed route state should be dropped: %+v", r.a.state)
+	}
+}
+
+func TestProxyRetryUsesEffectiveWeights(t *testing.T) {
+	v2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Header().Set("X-Hit", "v2") }))
+	defer v2.Close()
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	c := autoConfig(true, 100, 0)
+	c.Routes[0].RetryAttempts = 1
+	c.Routes[0].Upstreams[0].URL = deadURL
+	c.Routes[0].Upstreams[1].URL = v2.URL
+	r := newAWRig(c)
+	r.a.tick() // no data: v2 becomes positive (v1 75, v2 25)
+	if w := r.w(); w["v2"] == 0 {
+		t.Fatalf("precondition: v2 should be positive, got %v", w)
+	}
+	p := NewProxy(r.store, nil, r.h, r.m, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	p.weights = r.a
+	for i := 0; i < 20; i++ {
+		req := httptest.NewRequest("GET", "http://gateway/api/catalog/x", nil)
+		req.Header.Set("X-Request-ID", fmt.Sprint("req-", i))
+		w := httptest.NewRecorder()
+		p.ServeHTTP(w, req)
+		if w.Code != 200 || w.Header().Get("X-Hit") != "v2" {
+			t.Fatalf("request %d: code %d hit %q (retry must reach the overlay-positive upstream)", i, w.Code, w.Header().Get("X-Hit"))
+		}
 	}
 }
 

@@ -175,11 +175,17 @@ func (w *statusCapture) Flush() {
 }
 func (w *statusCapture) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (p *Proxy) pick(r Route, seed string) (Upstream, bool) {
-	// Remove ejected targets and renormalize the remaining configured weights.
-	healthy := []Upstream{}
 	// Effective weights equal configured ones unless auto-weight is active, in
 	// which case a configured-0 upstream is eligible once its effective weight is positive.
-	for _, u := range p.weights.Effective(r) {
+	return p.choose(p.weights.Effective(r), seed)
+}
+
+// choose selects among already-weighted upstreams, so callers apply the
+// auto-weight overlay exactly once on the full route.
+func (p *Proxy) choose(ups []Upstream, seed string) (Upstream, bool) {
+	// Remove ejected targets and renormalize the remaining weights.
+	healthy := []Upstream{}
+	for _, u := range ups {
 		if u.Weight > 0 && p.health.Allowed(u.ID) {
 			healthy = append(healthy, u)
 		}
@@ -276,12 +282,14 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(clone)
 }
 func (p *Proxy) pickDifferent(r Route, seed, excluded string) (Upstream, bool) {
-	filtered := r
-	filtered.Upstreams = make([]Upstream, 0, len(r.Upstreams))
-	for _, u := range r.Upstreams {
+	// Overlay on the full route first, then exclude; filtering before the overlay
+	// would make the upstream set mismatch and silently drop effective weights.
+	eff := p.weights.Effective(r)
+	filtered := make([]Upstream, 0, len(eff))
+	for _, u := range eff {
 		if u.ID != excluded {
-			filtered.Upstreams = append(filtered.Upstreams, u)
+			filtered = append(filtered, u)
 		}
 	}
-	return p.pick(filtered, seed)
+	return p.choose(filtered, seed)
 }

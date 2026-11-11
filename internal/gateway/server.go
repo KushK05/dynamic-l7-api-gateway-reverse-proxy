@@ -93,6 +93,7 @@ func (s *Server) configEndpoint(w http.ResponseWriter, r *http.Request) {
 		// If-Match makes each update conditional on the revision the client read.
 		expected, e := strconv.ParseInt(strings.Trim(r.Header.Get("If-Match"), "\""), 10, 64)
 		if e != nil {
+			s.events.Add(Event{Kind: "config", Level: "warn", Message: "Config rejected: If-Match revision is required"})
 			jsonResponse(w, 428, map[string]string{"error": "If-Match revision is required"})
 			return
 		}
@@ -101,6 +102,7 @@ func (s *Server) configEndpoint(w http.ResponseWriter, r *http.Request) {
 		dec.DisallowUnknownFields()
 		var c Config
 		if e = dec.Decode(&c); e != nil {
+			s.events.Add(Event{Kind: "config", Level: "warn", Message: "Config rejected: invalid config JSON: " + e.Error()})
 			jsonResponse(w, 400, map[string]string{"error": "invalid config JSON: " + e.Error()})
 			return
 		}
