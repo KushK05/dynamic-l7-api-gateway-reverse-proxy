@@ -41,6 +41,10 @@ const MIN_HEIGHT = 440;
 const COL_TOP = 34;
 const COL_BOTTOM = 14;
 const V_GAP = 12;
+// Dense mode: with more than DENSE_ABOVE routes or upstreams the cards shrink
+// (inline stats, no host line or bar) so the topology fits a 1080p viewport.
+const DENSE_ABOVE = 6;
+const V_GAP_DENSE = 6;
 // Column width shares and caps: clients, gateway, routes, upstreams.
 const COL_RATIO = [0.17, 0.25, 0.29, 0.29];
 const COL_MAX = [190, 240, 260, 260];
@@ -603,6 +607,10 @@ class Topology {
         if (n.el.style.width !== w) n.el.style.width = w;
       }
     }
+    // Toggle density before measuring so card heights reflect it.
+    const dense = Math.max(this.routeOrder.length, this.upOrder.length) > DENSE_ABOVE;
+    this.root.classList.toggle('is-dense', dense);
+    const vgap = dense ? V_GAP_DENSE : V_GAP;
     let need = 0;
     const heights = columns.map((ids) => {
       let total = 0;
@@ -613,7 +621,7 @@ class Topology {
         n.h = n.el.offsetHeight;
         total += n.h;
       }
-      total += V_GAP * Math.max(0, ids.length - 1);
+      total += vgap * Math.max(0, ids.length - 1);
       need = Math.max(need, total);
       return total;
     });
@@ -628,7 +636,7 @@ class Topology {
         if (!n) continue;
         n.tx = xs[c];
         n.ty = Math.round(y);
-        y += n.h + V_GAP;
+        y += n.h + vgap;
         if (n.x == null || reducedMotion.matches) {
           n.x = n.tx;
           n.y = n.ty;

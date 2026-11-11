@@ -542,9 +542,10 @@ button {
 }
 
 .panel-events {
-  min-height: 250px;
+  min-height: 200px;
 }
 
+/* The feed scrolls inside its panel, so its height never drives the row. */
 .panel-events .panel-body {
   overflow: auto;
 }
@@ -1109,7 +1110,7 @@ button {
 
 .rc-row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 70px 62px;
+  grid-template-columns: 138px minmax(0, 1fr) 66px 58px;
   align-items: center;
   gap: 10px;
   min-height: 34px;
@@ -2535,6 +2536,12 @@ button {
   .tn-gauge { align-self: center; }
 }
 
+/* Narrow upstream cards: the HEALTHY pill would truncate names such as
+   orders-a and orders-b to the same stub, so only non-healthy pills show. */
+@container (max-width: 209px) {
+  .tn-upstream[data-health="healthy"] .tn-badge-health { display: none; }
+}
+
 @container (max-width: 150px) {
   .tn-stats:not(.tn-stats-2) { grid-template-columns: repeat(2, auto); }
 }
@@ -2571,6 +2578,52 @@ button {
   font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+/* Dense topology (many routes or upstreams): compact route and upstream cards.
+   Stats go inline (value then label), the host line and in-flight bar drop
+   out (the host stays in the tooltip, in-flight stays a stat). */
+.is-dense .tn-route,
+.is-dense .tn-upstream {
+  gap: 3px;
+  padding: 5px 10px 6px 14px;
+}
+
+.is-dense .tn-route .tn-v,
+.is-dense .tn-upstream .tn-v {
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.is-dense .tn-route .tn-k,
+.is-dense .tn-upstream .tn-k {
+  line-height: 1.1;
+}
+
+.is-dense .tn-route .tn-head,
+.is-dense .tn-upstream .tn-head {
+  min-height: 22px;
+}
+
+.is-dense .tn-upstream .tn-sub,
+.is-dense .tn-upstream .tn-bar {
+  display: none;
+}
+
+.is-dense .tn-route .tn-stats,
+.is-dense .tn-upstream .tn-stats {
+  padding-top: 4px;
+}
+
+/* Inline value-then-label stats only when the card is wide enough; narrow
+   cards (1366px laptops) keep the stacked layout so numbers never clip. */
+@container (min-width: 210px) {
+  .is-dense .tn-route .tn-stat,
+  .is-dense .tn-upstream .tn-stat {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+  }
 }
 
 .tn[data-state="warn"] .tn-v { color: #ffd77a; }
@@ -3373,10 +3426,6 @@ button {
 .sc-reset .sc-name { color: #9be8bf; }
 
 /* Event feed */
-
-.panel-events {
-  min-height: 300px;
-}
 
 .panel-events .panel-body.ev-body {
   padding: 0;
